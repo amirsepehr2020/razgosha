@@ -14,7 +14,6 @@ s = s.replace(
     '4️⃣ هر پرونده فقط یک‌بار امتیاز اصلی خودش رو می‌ده.\\n5️⃣ پرونده‌ها به‌ترتیب باز می‌شن.',
     '4️⃣ هر پرونده فقط یک‌بار امتیاز اصلی خودش رو می‌ده.\\n5️⃣ هر پاسخ اشتباه امتیاز همین پرونده رو کاهش می‌ده: ۵۰٪، بعد ۲۵٪، و بعد صفر.\\n6️⃣ پرونده‌ها به‌ترتیب باز می‌شن.'
 )
-
 s = s.replace(
     '🎯 مأموریت روزانه هم می‌تونه به امتیازت اضافه کنه.\\n\\n🔥 هدف فقط حل کردن نیست؛ حرفه‌ای‌تر حل کن و بالاتر برو.',
     '🎯 مأموریت روزانه هم می‌تونه به امتیازت اضافه کنه.\\n\\n⚠️ پاسخ اشتباه امتیاز پرونده رو کم می‌کنه: ۱ اشتباه = نصف، ۲ اشتباه = یک‌چهارم، ۳ اشتباه = صفر.\\n\\n🔥 هدف فقط حل کردن نیست؛ حرفه‌ای‌تر حل کن و بالاتر برو.'
@@ -23,6 +22,10 @@ s = s.replace(
 s = s.replace(
     'SELECT current_step, solved FROM player_progress WHERE player_id=? AND case_id=?',
     'SELECT current_step, solved, wrong_guesses FROM player_progress WHERE player_id=? AND case_id=?'
+)
+s = s.replace(
+    'SELECT case_id, current_step FROM player_progress WHERE player_id=? AND solved=0 ORDER BY updated_at DESC, id DESC LIMIT 1',
+    'SELECT case_id, current_step, wrong_guesses FROM player_progress WHERE player_id=? AND solved=0 ORDER BY updated_at DESC, id DESC LIMIT 1'
 )
 
 s = s.replace(
@@ -34,7 +37,6 @@ s = s.replace(
     'return sendMessage(env, chatId, `📂 ${c.title}\\n\\n${c.intro}\\n\\n👥 مظنون‌ها:\\n${c.suspects.map((x, i) => `${i + 1}. ${x}`).join("\\n")}\\n\\n🧩 مرحله ${step + 1}/${getStageCount(c)} — ${stage?.title || "بررسی شواهد"}\\n\\nسرنخ‌ها رو با دقت بررسی کن؛ عجله نکن 👀`, caseKeyboard(c, step), 1100, "🕵️");',
     'const activeWarning = isFinalStage(c, step) ? `\\n\\n${getMistakeWarning(Number(existing?.wrong_guesses || 0))}` : "";\n  return sendMessage(env, chatId, `📂 ${c.title}\\n\\n${c.intro}\\n\\n👥 مظنون‌ها:\\n${c.suspects.map((x, i) => `${i + 1}. ${x}`).join("\\n")}\\n\\n🧩 مرحله ${step + 1}/${getStageCount(c)} — ${stage?.title || "بررسی شواهد"}\\n\\nسرنخ‌ها رو با دقت بررسی کن؛ عجله نکن 👀${activeWarning}`, caseKeyboard(c, step), 1100, "🕵️");'
 )
-
 s = s.replace(
     'return c ? { ...c, current_step: Number(row.current_step || 0) } : null;',
     'return c ? { ...c, current_step: Number(row.current_step || 0), wrong_guesses: Number(row.wrong_guesses || 0) } : null;'
@@ -91,7 +93,6 @@ s = s.replace(
     'if (isFinalStage(activeCase, nextStep)) return sendMessage(env, chatId, `🧩 مرحله نهایی\\n\\n${nextStage.question}\\n\\nحالا همه شواهد رو کنار هم بذار.`, puzzleKeyboard(nextStage), 1000, "🧩");',
     'if (isFinalStage(activeCase, nextStep)) return sendMessage(env, chatId, `🧩 مرحله نهایی\\n\\n${nextStage.question}\\n\\nحالا همه شواهد رو کنار هم بذار.\\n\\n${getMistakeWarning(activeCase.wrong_guesses)}`, puzzleKeyboard(nextStage), 1000, "🧩");'
 )
-
 s = s.replace(
     'return sendMessage(env, chatId, `🧩 خب... رسیدیم به اصل ماجرا!\\n\\n${stage.question}\\n\\nفقط یکی از این جواب‌ها با شواهد جور درمیاد.`, puzzleKeyboard(stage), 950, "🧩");',
     'return sendMessage(env, chatId, `🧩 خب... رسیدیم به اصل ماجرا!\\n\\n${stage.question}\\n\\n${getMistakeWarning(activeCase.wrong_guesses)}\\n\\nفقط یکی از این جواب‌ها با شواهد جور درمیاد.`, puzzleKeyboard(stage), 950, "🧩");'
@@ -109,9 +110,6 @@ new_wrong = '''if (index !== finalCase.answer) {
 if old_wrong in s:
     s = s.replace(old_wrong, new_wrong)
 
-s = s.replace(
-    '💰 +${activeCase.reward} امتیاز',
-    '💰 +${awarded.points} امتیاز'
-)
+s = s.replace('💰 +${activeCase.reward} امتیاز', '💰 +${awarded.points} امتیاز')
 
 p.write_text(s, encoding="utf-8")
