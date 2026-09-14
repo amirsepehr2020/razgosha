@@ -29,7 +29,7 @@ test("next unlocked case is the first unsolved case in sequence", () => {
 test("index uses compact archive controls instead of 60 case buttons", () => {
   const source = fs.readFileSync("src/index.js", "utf8");
   assert.match(source, /getCasePage/);
-  assert.match(source, /صفحه بعد/);
-  assert.match(source, /صفحه قبل/);
+  assert.match(source, /صفحه \$\{currentPage \+ 1\}/);
+  assert.match(source, /صفحه \$\{currentPage - 1\}/);
   assert.match(source, /پرونده بعدی/);
 });
