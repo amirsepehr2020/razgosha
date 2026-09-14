@@ -1,0 +1,59 @@
+name: Activate advanced case catalog
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  activate:
+    if: "!contains(github.event.head_commit.message, 'activate: connect 60-case catalog')"
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Connect 60-case catalog
+        shell: python
+        run: |
+          from pathlib import Path
+
+          cases = Path('src/cases.js')
+          text = cases.read_text(encoding='utf-8')
+          if 'from "./advanced-cases.js"' not in text:
+              text = 'import { ADVANCED_CASES } from "./advanced-cases.js";\n\n' + text
+          if '...ADVANCED_CASES' not in text:
+              stripped = text.rstrip()
+              if not stripped.endswith('];'):
+                  raise SystemExit('Unexpected src/cases.js ending')
+              stripped = stripped[:-2].rstrip() + ',\n  ...ADVANCED_CASES\n];\n'
+              text = stripped
+          cases.write_text(text, encoding='utf-8')
+
+          index = Path('src/index.js')
+          text = index.read_text(encoding='utf-8')
+          text = text.replace('۱۰ پرونده منتظرتـه', '۶۰ پرونده منتظرتـه')
+          text = text.replace('هر ده پرونده فعلی', 'هر ۶۰ پرونده فعلی')
+          text = text.replace('حل هر ۱۰ پرونده فعلی', 'حل هر ۶۰ پرونده فعلی')
+          text = text.replace('هر ده پرونده فعلی رو حل کن 👑', 'هر ۶۰ پرونده فعلی رو حل کن 👑')
+          index.write_text(text, encoding='utf-8')
+
+          workflow = Path('.github/workflows/activate-advanced-cases.yml')
+          workflow.unlink(missing_ok=True)
+      - name: Validate
+        run: |
+          node --check src/cases.js
+          node --check src/advanced-cases.js
+          node --check src/case-catalog.js
+          node --check src/index.js
+          test "$(grep -o 'makeCase(' src/advanced-cases.js | wc -l)" -eq 51
+
+      - name: Commit activation
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/cases.js src/index.js .github/workflows/activate-advanced-cases.yml
+          git commit -m "activate: connect 60-case catalog" || exit 0
+          git push
