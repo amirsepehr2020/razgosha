@@ -13,6 +13,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Fix case catalog duplication
+        run: python scripts/fix_case_catalog.py
       - name: Apply gameplay UX integration
         run: python scripts/integrate_gameplay_ux.py
       - name: Validate
@@ -20,10 +22,11 @@ jobs:
           node --check src/index.js
           node --check src/case-pagination.js
           node --check src/stage-engine.js
+          node --check src/cases.js
           npm test
       - name: Commit activation
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add src/index.js
+          git add src/index.js src/cases.js
           git diff --cached --quiet || (git commit -m "activate: gameplay UX" && git push)
