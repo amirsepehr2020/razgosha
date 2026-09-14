@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="title desc">
+  <title id="title">Razgosha logo</title>
+  <desc id="desc">A dark detective eye with a magnifying-glass pupil, representing mystery and investigation.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0b1220"/>
+      <stop offset="1" stop-color="#111827"/>
+    </linearGradient>
+    <linearGradient id="iris" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#34d399"/>
+      <stop offset="1" stop-color="#10b981"/>
+    </linearGradient>
+    <filter id="shadow" x="-30%" y="-30%" width="160%" height="160%">
+      <feDropShadow dx="0" dy="12" stdDeviation="14" flood-color="#000" flood-opacity=".35"/>
+    </filter>
+  </defs>
+  <rect width="512" height="512" rx="112" fill="url(#bg)"/>
+  <path d="M76 257c47-91 117-137 180-137s133 46 180 137c-47 91-117 137-180 137S123 348 76 257Z" fill="#0f172a" stroke="#34d399" stroke-width="18" filter="url(#shadow)"/>
+  <ellipse cx="256" cy="257" rx="91" ry="104" fill="url(#iris)"/>
+  <ellipse cx="256" cy="257" rx="42" ry="58" fill="#07111d"/>
+  <circle cx="273" cy="231" r="13" fill="#fff" opacity=".9"/>
+  <circle cx="291" cy="251" r="6" fill="#fff" opacity=".45"/>
+  <path d="M347 332l56 56" stroke="#34d399" stroke-width="22" stroke-linecap="round"/>
+  <circle cx="398" cy="383" r="25" fill="none" stroke="#34d399" stroke-width="12"/>
+  <path d="M132 202c34-45 76-67 124-67" fill="none" stroke="#fff" stroke-width="10" stroke-linecap="round" opacity=".12"/>
+</svg>
