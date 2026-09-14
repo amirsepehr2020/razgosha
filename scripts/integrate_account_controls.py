@@ -10,18 +10,16 @@ if IMPORT not in source:
         raise SystemExit("account-controls: score import marker not found")
     source = source.replace(marker, marker + IMPORT, 1)
 
-MENU_MARKER = '    [{ text: "🏅 دستاوردها" }, { text: "🎒 کوله‌باز" }],\n    [{ text: "ℹ️ راهنما" }]'
-MENU_REPLACEMENT = '    [{ text: "🏅 دستاوردها" }, { text: "🎒 کوله‌باز" }],\n    [{ text: "⚙️ حساب کارآگاهی" }, { text: "ℹ️ راهنما" }]'
-if '⚙️ حساب کارآگاهی' not in source:
-    if MENU_MARKER not in source:
-        raise SystemExit("account-controls: menu marker not found")
+# Account management belongs inside the profile screen, not the main menu.
+MENU_MARKER = '    [{ text: "🏅 دستاوردها" }, { text: "🎒 کوله‌باز" }],\n    [{ text: "⚙️ حساب کارآگاهی" }, { text: "ℹ️ راهنما" }]'
+MENU_REPLACEMENT = '    [{ text: "🏅 دستاوردها" }, { text: "🎒 کوله‌باز" }],\n    [{ text: "ℹ️ راهنما" }]'
+if MENU_MARKER in source:
     source = source.replace(MENU_MARKER, MENU_REPLACEMENT, 1)
 
 FUNCTION_MARKER = 'async function profile(env, chatId, player) {'
 if 'async function accountSettings(env, chatId, player)' not in source:
     functions = '''async function resetAccount(env, chatId, player) {
   const now = new Date().toISOString();
-  const controls = buildAccountControls();
   await env.DB.batch([
     env.DB.prepare("DELETE FROM player_progress WHERE player_id=?").bind(player.id),
     env.DB.prepare("DELETE FROM case_rewards WHERE player_id=?").bind(player.id),
@@ -47,7 +45,7 @@ async function deleteAccount(env, chatId, player) {
 
 async function accountSettings(env, chatId, player) {
   const controls = buildAccountControls();
-  return sendMessage(env, chatId, `⚙️ حساب کارآگاهی\n\n👤 ${esc(player.detective_name || player.first_name || "کارآگاه")}\n🏆 ${player.score} امتیاز\n⭐ سطح ${player.level}\n\nاز اینجا می‌تونی حسابت رو ری‌استارت کنی یا برای همیشه حذفش کنی.`, keyboard([
+  return sendMessage(env, chatId, `⚙️ حساب کارآگاهی\n\n👤 ${esc(player.detective_name || player.first_name || "کارآگاه")}\n🏆 ${player.score || 0} امتیاز\n⭐ سطح ${player.level || 1}\n\nاز اینجا می‌تونی حسابت رو ری‌استارت کنی یا برای همیشه حذفش کنی.`, keyboard([
     [controls.reset.button],
     [controls.delete.button],
     [BACK]
@@ -65,13 +63,30 @@ async function confirmAccountAction(env, chatId, player, action) {
 '''
     if FUNCTION_MARKER not in source:
         raise SystemExit("account-controls: profile marker not found")
-    source = source.replace(FUNCTION_MARKER, functions + FUNCTION_MARKER, 1)
+    # Rename the existing profile implementation and put a new profile screen in front of it.
+    source = source.replace(FUNCTION_MARKER, 'async function legacyProfile(env, chatId, player) {', 1)
+    profile_wrapper = '''async function profile(env, chatId, player) {
+  const solved = await env.DB.prepare("SELECT COUNT(*) AS count FROM player_progress WHERE player_id=? AND solved=1").bind(player.id).first();
+  const solvedCount = Number(solved?.count || 0);
+  const controls = buildAccountControls();
+  return sendMessage(env, chatId, `👤 پروفایل کارآگاهی\n\n🕵️ ${esc(player.detective_name || player.first_name || "کارآگاه")}\n🏆 امتیاز: ${player.score || 0}\n⭐ سطح: ${player.level || 1}\n🔥 استریک: ${player.streak || 0}\n📁 پرونده‌های حل‌شده: ${solvedCount}\n\n⚙️ مدیریت حساب`, keyboard([
+    [controls.reset.button, controls.delete.button],
+    [BACK]
+  ], "پروفایل کارآگاهی...");
+}
+
+'''
+    source = source.replace('async function legacyProfile(env, chatId, player) {', functions + 'async function legacyProfile(env, chatId, player) {', 1)
+    # Place the new wrapper immediately after the legacy function using a marker at the next known function.
+    next_marker = 'async function rank(env, chatId) {'
+    if next_marker not in source:
+        raise SystemExit("account-controls: rank marker not found")
+    source = source.replace(next_marker, profile_wrapper + next_marker, 1)
 
 HANDLER_MARKER = '  if (text === "/profile" || text === "👤 پروفایل") return profile(env, chatId, player);\n'
-HANDLER = '''  if (text === "⚙️ حساب کارآگاهی") return accountSettings(env, chatId, player);
-  if (text === "🔄 ری‌استارت حساب") return confirmAccountAction(env, chatId, player, "reset");
+HANDLER = '''  if (text === "🔄 ری‌استارت حساب") return confirmAccountAction(env, chatId, player, "reset");
   if (text === "🗑️ حذف حساب") return confirmAccountAction(env, chatId, player, "delete");
-  if (text === "❌ نه، بی‌خیال") return accountSettings(env, chatId, player);
+  if (text === "❌ نه، بی‌خیال") return profile(env, chatId, player);
   if (text === "✅ بله، ری‌استارت کن") return resetAccount(env, chatId, player);
   if (text === "🗑️ بله، حذفش کن") return deleteAccount(env, chatId, player);
 '''
@@ -81,4 +96,4 @@ if 'return resetAccount(env, chatId, player);' not in source:
     source = source.replace(HANDLER_MARKER, HANDLER_MARKER + HANDLER, 1)
 
 path.write_text(source, encoding="utf-8")
-print("account-controls integrated")
+print("account-controls integrated inside profile")
