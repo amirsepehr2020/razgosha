@@ -5,7 +5,7 @@ import { CASES, getCase } from "../src/cases.js";
 
 test("worker entry and case engine exist", () => {
   assert.equal(fs.existsSync("src/index.js"), true);
-  assert.equal(CASES.length, 10);
+  assert.equal(CASES.length, 60);
   assert.ok(CASES.every(c => c.id && c.question && c.options.length === 4));
 });
 
