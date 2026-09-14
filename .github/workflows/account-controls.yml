@@ -1,0 +1,42 @@
+name: Apply profile account controls
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "src/index.js"
+      - "src/account-controls.js"
+      - "scripts/integrate_account_controls.py"
+      - ".github/workflows/account-controls.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Integrate account controls into profile
+        run: python scripts/integrate_account_controls.py
+
+      - name: Validate JavaScript
+        run: |
+          node --check src/index.js
+          node --check src/account-controls.js
+          npm test --if-present
+
+      - name: Commit generated profile changes
+        run: |
+          if git diff --quiet -- src/index.js; then
+            echo "No profile account-control changes needed."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/index.js
+          git commit -m "fix: add account controls to profile"
+          git push
