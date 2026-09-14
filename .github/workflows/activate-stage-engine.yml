@@ -13,80 +13,17 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Integrate compact archive and stage flow
-        shell: python
-        run: |
-          from pathlib import Path
-          import re
-
-          p = Path('src/index.js')
-          s = p.read_text(encoding='utf-8')
-
-          if 'from "./stage-engine.js"' not in s:
-              s = s.replace('import { CASES, getCase } from "./cases.js";', 'import { CASES, getCase } from "./cases.js";\nimport { getStage, getStageClues, getStageCount, isFinalStage } from "./stage-engine.js";')
-          if 'from "./case-pagination.js"' not in s:
-              s = s.replace('import { getStage, getStageClues, getStageCount, isFinalStage } from "./stage-engine.js";', 'import { getStage, getStageClues, getStageCount, isFinalStage } from "./stage-engine.js";\nimport { getCasePage, getUnlockedCaseId } from "./case-pagination.js";')
-
-          s = s.replace('هر ده پرونده فعلی رو حل کن 👑', 'هر ۶۰ پرونده رو حل کن 👑')
-          s = s.replace('۱۰ پرونده منتظرتـه', 'ده‌ها پرونده منتظرتـه')
-          s = s.replace('۱۰ پرونده فعلی', 'ده‌ها پرونده فعلی')
-          s = s.replace('هر ۱۰ پرونده فعلی', 'هر ۶۰ پرونده')
-          s = s.replace('const NEXT_STAGE = "➡️ مرحله بعد";', 'const NEXT_STAGE = "➡️ مرحله بعد";') if 'const NEXT_STAGE' in s else s.replace('const CLUE_LABELS = ["🔍 سرنخ ۱", "🔍 سرنخ ۲", "🔍 سرنخ ۳", "🔍 سرنخ ۴"];', 'const CLUE_LABELS = ["🔍 سرنخ ۱", "🔍 سرنخ ۲", "🔍 سرنخ ۳", "🔍 سرنخ ۴"];\nconst NEXT_STAGE = "➡️ مرحله بعد";')
-
-          start = s.index('function caseListKeyboard() {')
-          end = s.index('\nfunction caseButton(c) {', start)
-          s = s[:start] + '''function caseListKeyboard(page = 1) {\n  const { items, page: currentPage, totalPages } = getCasePage(CASES, page);\n  const rows = items.reduce((acc, c, i) => {\n    if (i % 2 === 0) acc.push([caseButton(c)]);\n    else acc[acc.length - 1].push(caseButton(c));\n    return acc;\n  }, []);\n  const nav = [];\n  if (currentPage > 1) nav.push("◀️ صفحه قبل");\n  if (currentPage < totalPages) nav.push("صفحه بعد ▶️");\n  if (nav.length) rows.push(nav);\n  rows.push([BACK]);\n  return keyboard(rows, `پرونده‌ها — صفحه ${currentPage} از ${totalPages}`);\n}'''+s[end:]
-
-          start = s.index('function caseKeyboard(c) {')
-          end = s.index('\nfunction puzzleKeyboard(c) {', start)
-          s = s[:start] + '''function caseKeyboard(c, step = 0) {\n  const clues = getStageClues(c, step);\n  const rows = [];\n  for (let i = 0; i < clues.length; i += 2) {\n    const row = [CLUE_LABELS[i] || `🔍 سرنخ ${i + 1}`];\n    if (clues[i + 1]) row.push(CLUE_LABELS[i + 1] || `🔍 سرنخ ${i + 2}`);\n    rows.push(row);\n  }\n  rows.push([isFinalStage(c, step) ? PUZZLE_LABEL : NEXT_STAGE]);\n  rows.push([CASES_LABEL, BACK]);\n  return keyboard(rows, isFinalStage(c, step) ? "معمای نهایی آماده‌ست..." : "شواهد رو بررسی کن...");\n}'''+s[end:]
-
-          start = s.index('async function showCases(env, chatId, player) {')
-          end = s.index('\nasync function startCase(', start)
-          s = s[:start] + '''async function showCases(env, chatId, player, page = 1) {\n  const rows = await env.DB.prepare("SELECT case_id, solved FROM player_progress WHERE player_id = ?").bind(player.id).all();\n  const progress = new Map(rows.results.map(r => [r.case_id, Number(r.solved || 0)]));\n  const { items, page: currentPage, totalPages } = getCasePage(CASES, page);\n  const unlockedId = getUnlockedCaseId(CASES, new Set([...progress].filter(([, solved]) => solved).map(([id]) => id)));\n  const lines = items.map(c => {\n    const solved = progress.get(c.id) === 1;\n    const unlocked = c.id === unlockedId || solved;\n    return `${solved ? "✅" : unlocked ? "🟢" : "🔒"} ${c.title} — ${c.difficulty} — ${c.reward} امتیاز`;\n  }).join("\\n");\n  const nav = [];\n  if (currentPage > 1) nav.push("◀️ صفحه قبل");\n  if (currentPage < totalPages) nav.push("صفحه بعد ▶️");\n  const text = `📁 آرشیو پرونده‌ها\\n\\n${lines}\\n\\n📄 صفحه ${currentPage} از ${totalPages}\\n\\n🔓 فقط پرونده بعدیِ مسیرت بازه. با حل هر پرونده، بعدی باز می‌شه.`;\n  return sendMessage(env, chatId, text, caseListKeyboard(currentPage), 750, "🔍");\n}'''+s[end:]
-
-          start = s.index('async function startCase(env, chatId, player, caseId) {')
-          end = s.index('\nasync function getActiveCase(', start)
-          s = s[:start] + '''async function startCase(env, chatId, player, caseId) {\n  const c = getCase(caseId);\n  if (!c) return sendMenu(env, chatId, "این پرونده رو پیدا نکردم 😅", "🤔");\n  const rows = await env.DB.prepare("SELECT case_id, solved FROM player_progress WHERE player_id = ?").bind(player.id).all();\n  const solved = new Set(rows.results.filter(r => r.solved).map(r => r.case_id));\n  const idx = CASES.findIndex(x => x.id === caseId);\n  if (idx > 0 && !solved.has(CASES[idx - 1].id)) return sendMenu(env, chatId, "🔒 این پرونده هنوز باز نیست. اول پرونده بعدیِ مسیرت رو حل کن 😉", "🔒");\n  const existing = await env.DB.prepare("SELECT current_step, solved FROM player_progress WHERE player_id=? AND case_id=?").bind(player.id, c.id).first();\n  if (!existing || existing.solved) {\n    await env.DB.prepare(`INSERT INTO player_progress (player_id, case_id, current_step, solved, updated_at) VALUES (?, ?, 0, 0, ?) ON CONFLICT(player_id, case_id) DO UPDATE SET current_step=0, solved=0, updated_at=excluded.updated_at`).bind(player.id, c.id, new Date().toISOString()).run();\n  }\n  const step = existing && !existing.solved ? Number(existing.current_step || 0) : 0;\n  const stage = getStage(c, step);\n  return sendMessage(env, chatId, `📂 ${c.title}\\n\\n${c.intro}\\n\\n👥 مظنون‌ها:\\n${c.suspects.map((x, i) => `${i + 1}. ${x}`).join("\\n")}\\n\\n🧩 مرحله ${step + 1}/${getStageCount(c)} — ${stage?.title || "بررسی شواهد"}\\n\\nسرنخ‌ها رو با دقت بررسی کن؛ عجله نکن 👀`, caseKeyboard(c, step), 1100, "🕵️");\n}'''+s[end:]
-
-          start = s.index('async function getActiveCase(env, playerId) {')
-          end = s.index('\nasync function profile(', start)
-          s = s[:start] + '''async function getActiveCase(env, playerId) {\n  const row = await env.DB.prepare("SELECT case_id, current_step FROM player_progress WHERE player_id=? AND solved=0 ORDER BY updated_at DESC, id DESC LIMIT 1").bind(playerId).first();\n  if (!row) return null;\n  const c = getCase(row.case_id);\n  return c ? { ...c, current_step: Number(row.current_step || 0) } : null;\n}'''+s[end:]
-
-          s = s.replace('هرچی بیشتر بازی کنی، این لیست بیشتر پر می‌شه 😎', 'هرچی بیشتر بازی کنی، این لیست بیشتر پر می‌شه؛ مسیرت تا ۶۰ پرونده ادامه داره 😎')
-          s = s.replace('👑 حل هر ۱۰ پرونده فعلی', '👑 حل هر ۶۰ پرونده')
-          s = s.replace('🕵️ اولین پرونده\\n🔥 حل ۳ پرونده\\n🧠 حل ۵ پرونده\\n👑 حل هر ۱۰ پرونده فعلی', '🕵️ اولین پرونده\\n🔥 حل ۳ پرونده\\n🧠 حل ۵ پرونده\\n👑 حل هر ۶۰ پرونده')
-
-          s = s.replace('const wanted = solved >= 10 ? ["first-case", "three-cases", "five-cases", "ten-cases"] : solved >= 5 ? ["first-case", "three-cases", "five-cases"] : solved >= 3 ? ["first-case", "three-cases"] : solved >= 1 ? ["first-case"] : [];', 'const wanted = [];\n  if (solved >= 1) wanted.push("first-case");\n  if (solved >= 3) wanted.push("three-cases");\n  if (solved >= 5) wanted.push("five-cases");\n  if (solved >= 10) wanted.push("ten-cases");\n  if (solved >= 20) wanted.push("twenty-cases");\n  if (solved >= 30) wanted.push("thirty-cases");\n  if (solved >= 50) wanted.push("fifty-cases");\n  if (solved >= 60) wanted.push("sixty-cases");')
-
-          s = s.replace('if (text === "/cases" || text === "🔎 پرونده‌ها" || text === CASES_LABEL) return showCases(env, chatId, player);', 'if (text === "/cases" || text === "🔎 پرونده‌ها" || text === CASES_LABEL) return showCases(env, chatId, player, 1);\n  if (text === "◀️ صفحه قبل") { const activePage = Number(message._casePage || 2); return showCases(env, chatId, player, Math.max(1, activePage - 1)); }\n  if (text === "صفحه بعد ▶️") return showCases(env, chatId, player, Number(message._casePage || 1) + 1);')
-
-          # Track archive page from button text without adding state to Telegram.
-          s = s.replace('function caseFromButton(text) {', 'function casePageFromButton(text) {\n  const match = String(text || "").match(/^📁 (\\d{3}) —/);\n  return match ? Number(match[1]) : null;\n}\n\nfunction caseFromButton(text) {')
-
-          # Replace the active-case block with stage-aware flow.
-          old_start = s.index('  if (activeCase) {')
-          old_end = s.index('\n  return sendMenu(env, chatId, "حاجی اینو نفهمیدم', old_start)
-          new_block = '''  if (activeCase) {\n    const stage = getStage(activeCase, activeCase.current_step);\n    const stageClues = getStageClues(activeCase, activeCase.current_step);\n    const clueIndex = CLUE_LABELS.indexOf(text);\n    if (clueIndex >= 0 && stageClues[clueIndex]) {\n      return sendMessage(env, chatId, `🔍 مرحله ${activeCase.current_step + 1} — سرنخ ${clueIndex + 1}\\n\\n${stageClues[clueIndex]}\\n\\nاین جزئیات رو یادت بمونه؛ ممکنه در مرحله بعد معنی جدیدی پیدا کنه 👀`, caseKeyboard(activeCase, activeCase.current_step), 900, "🔍");\n    }\n    if (text === NEXT_STAGE && !isFinalStage(activeCase, activeCase.current_step)) {\n      const nextStep = activeCase.current_step + 1;\n      await env.DB.prepare("UPDATE player_progress SET current_step=?, updated_at=? WHERE player_id=? AND case_id=? AND solved=0").bind(nextStep, new Date().toISOString(), player.id, activeCase.id).run();\n      const nextStage = getStage(activeCase, nextStep);\n      if (isFinalStage(activeCase, nextStep)) return sendMessage(env, chatId, `🧩 مرحله نهایی\\n\\n${nextStage.question}\\n\\nحالا همه شواهد رو کنار هم بذار.`, puzzleKeyboard(nextStage), 1000, "🧩");\n      return sendMessage(env, chatId, `🕵️ مرحله ${nextStep + 1}/${getStageCount(activeCase)} — ${nextStage.title}\\n\\nسرنخ‌های جدید رو بررسی کن.`, caseKeyboard(activeCase, nextStep), 900, "➡️");\n    }\n    if (text === PUZZLE_LABEL && isFinalStage(activeCase, activeCase.current_step)) {\n      return sendMessage(env, chatId, `🧩 خب... رسیدیم به اصل ماجرا!\\n\\n${stage.question}\\n\\nفقط یکی از این جواب‌ها با شواهد جور درمیاد.`, puzzleKeyboard(stage), 950, "🧩");\n    }\n    if (text === "🔍 دیدن سرنخ‌ها") return startCase(env, chatId, player, activeCase.id);\n\n    const finalCase = { ...activeCase, question: stage.question || activeCase.question, options: stage.options || activeCase.options, answer: stage.answer ?? activeCase.answer };\n    const index = answerIndex(finalCase, text);\n    if (index >= 0) {\n      if (index !== finalCase.answer) {\n        return sendMessage(env, chatId, `❌ نه، این یکی با شواهد جور درنمیاد.\\n\\n${finalCase.question}\\n\\nیه بار دیگه همه شواهد رو مرور کن؛ عجله نکن کارآگاه 😉`, puzzleKeyboard(finalCase), 850, "🤔");\n      }\n      try {\n        const awarded = await awardCaseScore(env, message.from.id, player.id, activeCase.id);\n        if (!awarded) return sendMenu(env, chatId, "✅ این پرونده قبلاً حل شده.\\n\\nبریم سراغ پرونده بعدی؟ 😎", "🏆");\n        await unlockAchievements(env, player.id);\n        const nextCase = CASES[CASES.findIndex(c => c.id === activeCase.id) + 1];\n        const nextText = nextCase ? `\\n\\n➡️ پرونده بعدی: ${nextCase.title}` : "\\n\\n👑 تو هر ۶۰ پرونده رو پشت سر گذاشتی!";\n        return sendMenu(env, chatId, `${activeCase.success}\\n\\n💰 +${activeCase.reward} امتیاز\\n\\n📁 پرونده ثبت شد.${nextText}`, "🎉");\n      } catch (error) {\n        logEvent("game_answer_error", { telegram_id: String(message.from.id), player_id: player.id, case_id: activeCase.id, message: error?.message || "unknown" });\n        return sendMessage(env, chatId, "⚠️ جواب درست بود، ولی ثبت پرونده با مشکل روبه‌رو شد.\\n\\nچند لحظه بعد دوباره همین گزینه رو بزن. 👀", puzzleKeyboard(finalCase), 700, "⚠️");\n      }\n    }\n  }'''
-          s = s[:old_start] + new_block + s[old_end:]
-
-          # Pagination navigation uses a compact command-like hidden page marker in memory.
-          # Instead of exposing 60 buttons, accept explicit page labels and default safely.
-          s = s.replace('if (text === "◀️ صفحه قبل") { const activePage = Number(message._casePage || 2); return showCases(env, chatId, player, Math.max(1, activePage - 1)); }\n  if (text === "صفحه بعد ▶️") return showCases(env, chatId, player, Number(message._casePage || 1) + 1);', 'if (text === "◀️ صفحه قبل") return showCases(env, chatId, player, 1);\n  if (text === "صفحه بعد ▶️") return showCases(env, chatId, player, 2);')
-
-          p.write_text(s, encoding='utf-8')
-          PY
+      - name: Apply gameplay UX integration
+        run: python scripts/integrate_gameplay_ux.py
       - name: Validate
         run: |
           node --check src/index.js
-          node --check src/stage-engine.js
           node --check src/case-pagination.js
+          node --check src/stage-engine.js
           npm test
       - name: Commit activation
-        shell: bash
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add src/index.js .github/workflows/activate-stage-engine.yml
-          git commit -m "activate: gameplay UX" || exit 0
-          git push
+          git add src/index.js
+          git diff --cached --quiet || (git commit -m "activate: gameplay UX" && git push)
