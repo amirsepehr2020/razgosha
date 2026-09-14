@@ -4,7 +4,6 @@ import re
 path = Path("src/index.js")
 s = path.read_text(encoding="utf-8")
 
-# Achievement catalog.
 start = s.find("const ACHIEVEMENTS = [")
 end = s.find("];", start)
 if start == -1 or end == -1:
@@ -28,13 +27,11 @@ new = '''const ACHIEVEMENTS = [
 ];'''
 s = s[:start] + new + s[end + 2:]
 
-# Modern achievement help text.
 help_new = '''  achievements: `🏅 دستاوردها\\n\\nمسیر کارآگاهیت اینجاست.\\n\\n🟢 شروع: اولین پرونده، ۳ پرونده، ۵ پرونده\\n🔵 پیشرفت: ۱۰، ۲۰ و ۳۰ پرونده\\n🟣 حرفه‌ای: ۵۰ و ۶۰ پرونده\\n🔴 مخفی: چشم عقاب، ردیاب زمان، دست پشت پرده و غیرممکن؟\\n\\n📊 پیشرفتت برای نشان‌های قابل‌نمایش کنار هر مورد دیده می‌شه.\\n🔒 نشان‌های مخفی تا قبل از کشف، راز می‌مونن.\\n\\n🎁 بعضی دستاوردها جایزه هم دارن. 👑`,'''
 s, count = re.subn(r'  achievements: `.*?`,\n  items:', lambda _m: help_new + "\n  items:", s, count=1, flags=re.S)
 if count != 1:
     raise SystemExit("achievement help block not found")
 
-# Multi-page archive navigation.
 s = s.replace(
     'if (currentPage > 1) nav.push("◀️ صفحه قبل");\n  if (currentPage < totalPages) nav.push("صفحه بعد ▶️");',
     'if (currentPage > 1) nav.push(`◀️ صفحه ${currentPage - 1}`);\n  if (currentPage < totalPages) nav.push(`صفحه ${currentPage + 1} ▶️`);'
@@ -45,7 +42,6 @@ s, _ = re.subn(
     s, count=1
 )
 
-# Replace the old achievement unlocker with a real, duplicate-safe engine.
 start = s.find("async function unlockAchievements(env, playerId)")
 end = s.find("\nfunction caseFromButton", start)
 if start == -1 or end == -1:
@@ -75,7 +71,6 @@ unlocker = '''async function unlockAchievements(env, playerId, chatId = null) {
   if (solvedCases.some(c => /زمان|ساعت|دقیقه|تاریخ|timeline|خط زمانی/i.test(`${c.title} ${c.intro} ${(c.clues || []).join(" ")}`))) wanted.push("time-tracker");
   if (solvedCases.some(c => c.difficulty === "سخت" || c.difficulty === "خیلی سخت")) wanted.push("mastermind");
   if (solvedCases.some(c => c.difficulty === "ویژه")) wanted.push("impossible");
-
   const rewards = { "first-case": 10, "three-cases": 15, "five-cases": 20, "ten-cases": 30, "twenty-cases": 40, "thirty-cases": 50, "fifty-cases": 75, "sixty-cases": 100, "clue-tracker": 15, "puzzle-solver": 20, "perfect-streak": 50, "eagle-eye": 25, "time-tracker": 25, "mastermind": 35, "impossible": 50 };
   const unlocked = [];
   for (const id of wanted) {
@@ -94,7 +89,6 @@ unlocker = '''async function unlockAchievements(env, playerId, chatId = null) {
 }'''
 s = s[:start] + unlocker + s[end:]
 
-# Add real achievement progress display with hidden achievements concealed.
 start = s.find("async function achievements(env, chatId, player)")
 end = s.find("\nasync function inventory", start)
 if start == -1 or end == -1:
@@ -102,7 +96,7 @@ if start == -1 or end == -1:
 viewer = '''async function achievements(env, chatId, player) {
   const [rows, stats] = await Promise.all([
     env.DB.prepare("SELECT achievement_id FROM player_achievements WHERE player_id = ?").bind(player.id).all(),
-    env.DB.prepare("SELECT COUNT(*) AS solved, clues_viewed, puzzles_solved, perfect_streak FROM players LEFT JOIN player_progress ON player_progress.player_id=players.id WHERE players.id=?").bind(player.id).first()
+    env.DB.prepare("SELECT SUM(solved) AS solved, MAX(clues_viewed) AS clues_viewed, MAX(puzzles_solved) AS puzzles_solved, MAX(perfect_streak) AS perfect_streak FROM players LEFT JOIN player_progress ON player_progress.player_id=players.id WHERE players.id=?").bind(player.id).first()
   ]);
   const unlocked = new Set(rows.results.map(r => r.achievement_id));
   const solved = Number(stats?.solved || 0);
@@ -121,20 +115,26 @@ viewer = '''async function achievements(env, chatId, player) {
     const suffix = p ? ` — ${Math.min(p[0], p[1])}/${p[1]}` : " — کشف‌شده";
     return `${unlocked.has(a[0]) ? "🏅" : "🔒"} ${a[1]}${suffix}`;
   }).join("\\n");
-  const count = unlocked.size;
-  return sendMessage(env, chatId, `🏅 دستاوردها\\n\\n📊 ${count}/${ACHIEVEMENTS.length} نشان باز شده\\n\\n${text}\\n\\n🎁 بعضی نشان‌ها امتیاز جایزه دارن.\\n🔒 نشان‌های مخفی رو باید خودت کشف کنی.`, MENU, 700, "🏅");
+  return sendMessage(env, chatId, `🏅 دستاوردها\\n\\n📊 ${unlocked.size}/${ACHIEVEMENTS.length} نشان باز شده\\n\\n${text}\\n\\n🎁 بعضی نشان‌ها امتیاز جایزه دارن.\\n🔒 نشان‌های مخفی رو باید خودت کشف کنی.`, MENU, 700, "🏅");
 }'''
 s = s[:start] + viewer + s[end:]
 
-# Count clue views when a clue is actually opened.
-needle = 'if (clueIndex >= 0 && stageClues[clueIndex]) {'
-replacement = 'if (clueIndex >= 0 && stageClues[clueIndex]) {\n      await env.DB.prepare("UPDATE players SET clues_viewed=clues_viewed+1, updated_at=? WHERE id=?").bind(new Date().toISOString(), player.id).run();'
-s = s.replace(needle, replacement, 1)
+# Track clue reads.
+s = s.replace(needle := 'if (clueIndex >= 0 && stageClues[clueIndex]) {', needle + '\n      await env.DB.prepare("UPDATE players SET clues_viewed=clues_viewed+1, updated_at=? WHERE id=?").bind(new Date().toISOString(), player.id).run();', 1)
 
-# On wrong answers reset the perfect streak; on correct answers increment it and trigger achievements.
-wrong = 'if (index !== finalCase.answer) return sendMessage(env, chatId, `❌ نه، این یکی با شواهد جور درنمیاد.'
-s = s.replace(wrong, 'if (index !== finalCase.answer) {\n          await env.DB.prepare("UPDATE players SET perfect_streak=0, updated_at=? WHERE id=?").bind(new Date().toISOString(), player.id).run();\n          return sendMessage(env, chatId, `❌ نه، این یکی با شواهد جور درنمیاد.', 1)
-s = s.replace('await unlockAchievements(env, player.id);', 'await env.DB.prepare("UPDATE players SET puzzles_solved=puzzles_solved+1, perfect_streak=perfect_streak+1, updated_at=? WHERE id=?").bind(new Date().toISOString(), player.id).run();\n            await unlockAchievements(env, player.id, chatId);', 1)
+# Reset perfect streak on wrong answers without altering control-flow shape.
+old = 'if (index !== finalCase.answer) return sendMessage(env, chatId, `❌ نه، این یکی با شواهد جور درنمیاد.'
+new_wrong = 'if (index !== finalCase.answer) {\n          await env.DB.prepare("UPDATE players SET perfect_streak=0, updated_at=? WHERE id=?").bind(new Date().toISOString(), player.id).run();\n          return sendMessage(env, chatId, `❌ نه، این یکی با شواهد جور درنمیاد.'
+s = s.replace(old, new_wrong, 1)
+# The original return ends immediately before the try block; close the new branch there.
+s = s.replace('puzzleKeyboard(finalCase), 850, "🤔");\n          try {', 'puzzleKeyboard(finalCase), 850, "🤔");\n        }\n          try {', 1)
+
+# Count solved puzzles and correct streak, then evaluate achievements.
+s = s.replace(
+    'await unlockAchievements(env, player.id);',
+    'await env.DB.prepare("UPDATE players SET puzzles_solved=puzzles_solved+1, perfect_streak=perfect_streak+1, updated_at=? WHERE id=?").bind(new Date().toISOString(), player.id).run();\n            await unlockAchievements(env, player.id, chatId);',
+    1
+)
 
 path.write_text(s, encoding="utf-8")
 print("complete achievement system integrated")
