@@ -81,12 +81,13 @@ function caseButton(c) {
 }
 
 function caseKeyboard(c) {
-  return keyboard([
-    [CLUE_LABELS[0], CLUE_LABELS[1]],
-    [CLUE_LABELS[2], CLUE_LABELS[3]],
-    [PUZZLE_LABEL],
-    [CASES_LABEL, BACK]
-  ], "سرنخ یا معما رو انتخاب کن...");
+  const clueRows = [];
+  for (let i = 0; i < c.clues.length; i += 2) {
+    const row = [CLUE_LABELS[i]];
+    if (CLUE_LABELS[i + 1] && c.clues[i + 1]) row.push(CLUE_LABELS[i + 1]);
+    clueRows.push(row);
+  }
+  return keyboard([...clueRows, [PUZZLE_LABEL], [CASES_LABEL, BACK]], "سرنخ یا معما رو انتخاب کن...");
 }
 
 function puzzleKeyboard(c) {
@@ -97,6 +98,34 @@ function puzzleKeyboard(c) {
     [`D) ${c.options[3]}`],
     ["🔍 دیدن سرنخ‌ها", BACK]
   ], "جوابت رو انتخاب کن...");
+}
+
+async function sendTyping(env, chatId, durationMs = 650) {
+  try {
+    await telegram(env, "sendChatAction", { chat_id: chatId, action: "typing" });
+    if (durationMs > 0) await new Promise(resolve => setTimeout(resolve, durationMs));
+  } catch (error) {
+    logEvent("typing_error", { chat_id: chatId, message: error?.message || "unknown" });
+  }
+}
+
+async function sendMessage(env, chatId, text, reply_markup = MENU, typingMs = 650, reaction = null) {
+  await sendTyping(env, chatId, typingMs);
+  const result = await telegram(env, "sendMessage", { chat_id: chatId, text, reply_markup });
+  const messageId = result?.result?.message_id;
+  if (reaction && messageId) {
+    try {
+      await telegram(env, "setMessageReaction", {
+        chat_id: chatId,
+        message_id: messageId,
+        reaction: [{ type: "emoji", emoji: reaction }],
+        is_big: false
+      });
+    } catch (error) {
+      logEvent("reaction_error", { chat_id: chatId, message_id: messageId, reaction, message: error?.message || "unknown" });
+    }
+  }
+  return result;
 }
 
 async function findPlayer(env, telegramId) {
@@ -117,42 +146,30 @@ async function createAccount(env, from) {
 async function requireAccount(env, chatId, telegramId) {
   const player = await findPlayer(env, telegramId);
   if (player) return player;
-  await telegram(env, "sendMessage", {
-    chat_id: chatId,
-    text: "🔐 اول باید حساب رازگشات رو بسازی.\n\nفقط /start رو بزن تا پروفایلت ساخته بشه؛ بعدش بزن بریم سراغ پرونده‌ها 😎",
-    reply_markup: removeKeyboard()
-  });
+  await sendMessage(env, chatId, "🔐 اول باید حساب رازگشات رو بسازی.\n\nفقط /start رو بزن تا پروفایلت ساخته بشه؛ بعدش بزن بریم سراغ پرونده‌ها 😎", removeKeyboard(), 350);
   return null;
 }
 
-async function sendMenu(env, chatId, text = "🕵️ برگشتی کارآگاه!\n\nخب، امروز کدوم پرونده رو می‌خوای بترکونی؟") {
-  return telegram(env, "sendMessage", { chat_id: chatId, text, reply_markup: MENU });
+async function sendMenu(env, chatId, text = "🕵️ برگشتی کارآگاه!\n\nخب، امروز کدوم پرونده رو می‌خوای بترکونی؟", reaction = "👀") {
+  return sendMessage(env, chatId, text, MENU, 550, reaction);
 }
 
 async function showCases(env, chatId, player) {
   const rows = await env.DB.prepare("SELECT case_id, solved FROM player_progress WHERE player_id = ?").bind(player.id).all();
   const progress = new Map(rows.results.map(r => [r.case_id, r.solved]));
   const lines = CASES.map((c, i) => `${progress.get(c.id) ? "✅" : i === 0 || progress.get(CASES[i - 1]?.id) ? "🟢" : "🔒"} ${c.title} — ${c.difficulty} — ${c.reward} امتیاز`).join("\n");
-  return telegram(env, "sendMessage", {
-    chat_id: chatId,
-    text: `📁 آرشیو پرونده‌ها\n\n${lines}\n\n🔓 پرونده‌ها به‌ترتیب باز می‌شن. اولی رو بزن و شروع کنیم!`,
-    reply_markup: caseListKeyboard()
-  });
+  return sendMessage(env, chatId, `📁 آرشیو پرونده‌ها\n\n${lines}\n\n🔓 پرونده‌ها به‌ترتیب باز می‌شن. اولی رو بزن و شروع کنیم!`, caseListKeyboard(), 750, "🔍");
 }
 
 async function startCase(env, chatId, player, caseId) {
   const c = getCase(caseId);
-  if (!c) return sendMenu(env, chatId, "این پرونده رو پیدا نکردم 😅");
+  if (!c) return sendMenu(env, chatId, "این پرونده رو پیدا نکردم 😅", "🤔");
   const rows = await env.DB.prepare("SELECT case_id, solved FROM player_progress WHERE player_id = ?").bind(player.id).all();
   const solved = new Set(rows.results.filter(r => r.solved).map(r => r.case_id));
   const idx = CASES.findIndex(x => x.id === caseId);
-  if (idx > 0 && !solved.has(CASES[idx - 1].id)) return sendMenu(env, chatId, "🔒 هنوز این پرونده برات باز نشده. اول قبلی رو حل کن، بعد میایم سراغ این یکی 😉");
+  if (idx > 0 && !solved.has(CASES[idx - 1].id)) return sendMenu(env, chatId, "🔒 هنوز این پرونده برات باز نشده. اول قبلی رو حل کن، بعد میایم سراغ این یکی 😉", "🔒");
   await env.DB.prepare(`INSERT INTO player_progress (player_id, case_id, current_step, solved, updated_at) VALUES (?, ?, 0, 0, ?) ON CONFLICT(player_id, case_id) DO UPDATE SET updated_at=excluded.updated_at`).bind(player.id, c.id, new Date().toISOString()).run();
-  return telegram(env, "sendMessage", {
-    chat_id: chatId,
-    text: `📂 ${c.title}\n\n${c.intro}\n\n👥 مظنون‌ها:\n${c.suspects.map((s, i) => `${i + 1}. ${s}`).join("\n")}\n\nخب کارآگاه... سرنخ‌ها رو یکی‌یکی ببین. عجله نکن؛ یه جزئیات کوچیک ممکنه کل ماجرا رو عوض کنه 👀`,
-    reply_markup: caseKeyboard(c)
-  });
+  return sendMessage(env, chatId, `📂 ${c.title}\n\n${c.intro}\n\n👥 مظنون‌ها:\n${c.suspects.map((s, i) => `${i + 1}. ${s}`).join("\n")}\n\nخب کارآگاه... سرنخ‌ها رو یکی‌یکی ببین. عجله نکن؛ یه جزئیات کوچیک ممکنه کل ماجرا رو عوض کنه 👀`, caseKeyboard(c), 1100, "🕵️");
 }
 
 async function getActiveCase(env, playerId) {
@@ -162,40 +179,36 @@ async function getActiveCase(env, playerId) {
 
 async function profile(env, chatId, player) {
   const stats = await env.DB.prepare("SELECT COUNT(*) AS total, SUM(solved) AS solved FROM player_progress WHERE player_id = ?").bind(player.id).first();
-  return telegram(env, "sendMessage", {
-    chat_id: chatId,
-    text: `👤 پروفایل کارآگاه\n\n🪪 اسم: ${esc(player.detective_name || player.first_name || "کارآگاه")}\n🏆 امتیاز: ${player.score}\n⭐ سطح: ${player.level}\n📁 پرونده‌های حل‌شده: ${stats.solved || 0}\n🔥 استریک روزانه: ${player.streak || 0}\n\nآروم‌آروم بیا بالا؛ رتبه‌ها منتظرتن 😎`,
-    reply_markup: MENU
-  });
+  return sendMessage(env, chatId, `👤 پروفایل کارآگاه\n\n🪪 اسم: ${esc(player.detective_name || player.first_name || "کارآگاه")}\n🏆 امتیاز: ${player.score}\n⭐ سطح: ${player.level}\n📁 پرونده‌های حل‌شده: ${stats.solved || 0}\n🔥 استریک روزانه: ${player.streak || 0}\n\nآروم‌آروم بیا بالا؛ رتبه‌ها منتظرتن 😎`, MENU, 550, "👤");
 }
 
 async function rank(env, chatId) {
   const rows = await env.DB.prepare("SELECT first_name, detective_name, score FROM players WHERE account_status='active' ORDER BY score DESC, id ASC LIMIT 10").all();
   const text = rows.results.map((p, i) => `${i + 1}. ${esc(p.detective_name || p.first_name || "کارآگاه")} — ${p.score} امتیاز`).join("\n") || "هنوز کسی امتیاز نگرفته.";
-  return telegram(env, "sendMessage", { chat_id: chatId, text: `🏆 تالار کارآگاه‌ها\n\n${text}\n\nتو هم می‌تونی بیای بالای این لیست 🔥`, reply_markup: MENU });
+  return sendMessage(env, chatId, `🏆 تالار کارآگاه‌ها\n\n${text}\n\nتو هم می‌تونی بیای بالای این لیست 🔥`, MENU, 700, "🏆");
 }
 
 async function achievements(env, chatId, player) {
   const rows = await env.DB.prepare("SELECT achievement_id FROM player_achievements WHERE player_id = ?").bind(player.id).all();
   const unlocked = new Set(rows.results.map(r => r.achievement_id));
   const text = ACHIEVEMENTS.map(a => `${unlocked.has(a[0]) ? "🏅" : "🔒"} ${a[1]} — ${a[2]}`).join("\n");
-  return telegram(env, "sendMessage", { chat_id: chatId, text: `🏅 دستاوردها\n\n${text}\n\nهرچی بیشتر بازی کنی، این لیست بیشتر پر می‌شه 😎`, reply_markup: MENU });
+  return sendMessage(env, chatId, `🏅 دستاوردها\n\n${text}\n\nهرچی بیشتر بازی کنی، این لیست بیشتر پر می‌شه 😎`, MENU, 650, "🏅");
 }
 
 async function inventory(env, chatId, player) {
   const rows = await env.DB.prepare("SELECT item_id, quantity FROM player_inventory WHERE player_id = ?").bind(player.id).all();
   const names = Object.fromEntries(ITEMS);
   const text = rows.results.map(r => `${names[r.item_id] || r.item_id}: ${r.quantity}`).join("\n");
-  return telegram(env, "sendMessage", { chat_id: chatId, text: `🎒 کوله‌بازیت\n\n${text || "فعلاً خالیه."}\n\nآیتم‌ها بعداً توی پرونده‌ها به کارت میان 😉`, reply_markup: MENU });
+  return sendMessage(env, chatId, `🎒 کوله‌بازیت\n\n${text || "فعلاً خالیه."}\n\nآیتم‌ها بعداً توی پرونده‌ها به کارت میان 😉`, MENU, 600, "🎒");
 }
 
 async function daily(env, chatId, player) {
   const today = new Date().toISOString().slice(0, 10);
-  if (player.last_daily_claim === today) return telegram(env, "sendMessage", { chat_id: chatId, text: "🎯 مأموریت امروز رو قبلاً گرفتی!\n\nفردا دوباره یه مأموریت تازه داریم 😎", reply_markup: MENU });
+  if (player.last_daily_claim === today) return sendMessage(env, chatId, "🎯 مأموریت امروز رو قبلاً گرفتی!\n\nفردا دوباره یه مأموریت تازه داریم 😎", MENU, 600, "🎯");
   const newScore = (player.score || 0) + 25;
   const newStreak = (player.streak || 0) + 1;
   await env.DB.prepare("UPDATE players SET score=?, streak=?, last_daily_claim=?, updated_at=? WHERE id=?").bind(newScore, newStreak, today, new Date().toISOString(), player.id).run();
-  return telegram(env, "sendMessage", { chat_id: chatId, text: `🎯 مأموریت امروز انجام شد!\n\n💰 +۲۵ امتیاز\n🔥 استریک: ${newStreak} روز\n\nهمین‌جوری ادامه بده کارآگاه؛ فردا هم یه جایزه داریم 👀`, reply_markup: MENU });
+  return sendMessage(env, chatId, `🎯 مأموریت امروز انجام شد!\n\n💰 +۲۵ امتیاز\n🔥 استریک: ${newStreak} روز\n\nهمین‌جوری ادامه بده کارآگاه؛ فردا هم یه جایزه داریم 👀`, MENU, 800, "🎉");
 }
 
 async function awardCaseScore(env, telegramId, playerId, caseId) {
@@ -205,12 +218,9 @@ async function awardCaseScore(env, telegramId, playerId, caseId) {
   const now = new Date().toISOString();
   const result = await env.DB.batch([
     env.DB.prepare(`INSERT OR IGNORE INTO case_rewards (player_id, case_id, reward_token, awarded_at)
-      SELECT ?, ?, ?, ? WHERE EXISTS (SELECT 1 FROM player_progress WHERE player_id=? AND case_id=? AND solved=0)`)
-      .bind(playerId, caseId, rewardToken, now, playerId, caseId),
-    env.DB.prepare(`UPDATE players SET score=score+?, level=CAST((score+?)/500 AS INTEGER)+1, updated_at=? WHERE id=? AND EXISTS (SELECT 1 FROM case_rewards WHERE player_id=? AND case_id=? AND reward_token=?)`)
-      .bind(c.reward, c.reward, now, playerId, playerId, caseId, rewardToken),
-    env.DB.prepare(`UPDATE player_progress SET solved=1, current_step=current_step+1, updated_at=? WHERE player_id=? AND case_id=? AND solved=0 AND EXISTS (SELECT 1 FROM case_rewards WHERE player_id=? AND case_id=? AND reward_token=?)`)
-      .bind(now, playerId, caseId, playerId, caseId, rewardToken)
+      SELECT ?, ?, ?, ? WHERE EXISTS (SELECT 1 FROM player_progress WHERE player_id=? AND case_id=? AND solved=0)`).bind(playerId, caseId, rewardToken, now, playerId, caseId),
+    env.DB.prepare(`UPDATE players SET score=score+?, level=CAST((score+?)/500 AS INTEGER)+1, updated_at=? WHERE id=? AND EXISTS (SELECT 1 FROM case_rewards WHERE player_id=? AND case_id=? AND reward_token=?)`).bind(c.reward, c.reward, now, playerId, playerId, caseId, rewardToken),
+    env.DB.prepare(`UPDATE player_progress SET solved=1, current_step=current_step+1, updated_at=? WHERE player_id=? AND case_id=? AND solved=0 AND EXISTS (SELECT 1 FROM case_rewards WHERE player_id=? AND case_id=? AND reward_token=?)`).bind(now, playerId, caseId, playerId, caseId, rewardToken)
   ]);
   const inserted = Number(result[0]?.meta?.changes || 0);
   const updated = Number(result[1]?.meta?.changes || 0);
@@ -250,7 +260,7 @@ async function handleMessage(env, message) {
 
   if (text === "/start") {
     const player = await createAccount(env, message.from);
-    return sendMenu(env, chatId, `🕵️ سلام ${esc(player.detective_name || player.first_name)}!\n\nحساب کارآگاهی‌ات ساخته شد و از اینجا به بعد همه‌چی برای خودته.\n\n۱۰ پرونده منتظرتـه؛ بریم ببینیم چندتاشو می‌تونی حل کنی 😎🔥`);
+    return sendMenu(env, chatId, `🕵️ سلام ${esc(player.detective_name || player.first_name)}!\n\nحساب کارآگاهی‌ات ساخته شد و از اینجا به بعد همه‌چی برای خودته.\n\n۱۰ پرونده منتظرتـه؛ بریم ببینیم چندتاشو می‌تونی حل کنی 😎🔥`, "🎉");
   }
 
   const player = await requireAccount(env, chatId, message.from.id);
@@ -263,7 +273,7 @@ async function handleMessage(env, message) {
   if (text === "🎯 مأموریت امروز") return daily(env, chatId, player);
   if (text === "🏅 دستاوردها") return achievements(env, chatId, player);
   if (text === "🎒 کوله‌باز") return inventory(env, chatId, player);
-  if (text === "ℹ️ راهنما") return telegram(env, "sendMessage", { chat_id: chatId, text: "ℹ️ راهنمای سریع\n\n🔎 پرونده رو انتخاب کن.\n🔍 سرنخ‌ها رو بخون.\n🧩 معما رو حل کن.\n🏆 امتیاز بگیر.\n🏅 دستاورد باز کن.\n🎒 آیتم جمع کن.\n🎯 هر روز هم مأموریت داری.\n\nاگه جایی گیر کردی، اول همه سرنخ‌ها رو کنار هم بذار؛ رازگشا با حدس کور جلو نمی‌ره 😉", reply_markup: MENU });
+  if (text === "ℹ️ راهنما") return sendMessage(env, chatId, "ℹ️ راهنمای سریع\n\n🔎 پرونده رو انتخاب کن.\n🔍 سرنخ‌ها رو بخون.\n🧩 معما رو حل کن.\n🏆 امتیاز بگیر.\n🏅 دستاورد باز کن.\n🎒 آیتم جمع کن.\n🎯 هر روز هم مأموریت داری.\n\nاگه جایی گیر کردی، اول همه سرنخ‌ها رو کنار هم بذار؛ رازگشا با حدس کور جلو نمی‌ره 😉", MENU, 650, "ℹ️");
 
   const caseId = caseFromButton(text);
   if (caseId) return startCase(env, chatId, player, caseId);
@@ -272,31 +282,31 @@ async function handleMessage(env, message) {
   if (activeCase) {
     const clueIndex = CLUE_LABELS.indexOf(text);
     if (clueIndex >= 0 && activeCase.clues[clueIndex]) {
-      return telegram(env, "sendMessage", { chat_id: chatId, text: `🔍 سرنخ ${clueIndex + 1}\n\n${activeCase.clues[clueIndex]}\n\nحواست جمع باشه... این جزئیات ممکنه بعداً به کارت بیاد 👀`, reply_markup: caseKeyboard(activeCase) });
+      return sendMessage(env, chatId, `🔍 سرنخ ${clueIndex + 1}\n\n${activeCase.clues[clueIndex]}\n\nحواست جمع باشه... این جزئیات ممکنه بعداً به کارت بیاد 👀`, caseKeyboard(activeCase), 900, "🔍");
     }
     if (text === PUZZLE_LABEL) {
-      return telegram(env, "sendMessage", { chat_id: chatId, text: `🧩 خب... رسیدیم به اصل ماجرا!\n\n${activeCase.question}\n\nفقط یکی از این جواب‌ها با شواهد جور درمیاد.`, reply_markup: puzzleKeyboard(activeCase) });
+      return sendMessage(env, chatId, `🧩 خب... رسیدیم به اصل ماجرا!\n\n${activeCase.question}\n\nفقط یکی از این جواب‌ها با شواهد جور درمیاد.`, puzzleKeyboard(activeCase), 950, "🧩");
     }
     if (text === "🔍 دیدن سرنخ‌ها") return startCase(env, chatId, player, activeCase.id);
 
     const index = answerIndex(activeCase, text);
     if (index >= 0) {
       if (index !== activeCase.answer) {
-        return telegram(env, "sendMessage", { chat_id: chatId, text: `❌ نه، این یکی با شواهد جور درنمیاد.\n\n${activeCase.question}\n\nیه بار دیگه سرنخ‌ها رو مرور کن؛ عجله نکن کارآگاه 😉`, reply_markup: puzzleKeyboard(activeCase) });
+        return sendMessage(env, chatId, `❌ نه، این یکی با شواهد جور درنمیاد.\n\n${activeCase.question}\n\nیه بار دیگه سرنخ‌ها رو مرور کن؛ عجله نکن کارآگاه 😉`, puzzleKeyboard(activeCase), 850, "🤔");
       }
       try {
         const awarded = await awardCaseScore(env, message.from.id, player.id, activeCase.id);
-        if (!awarded) return sendMenu(env, chatId, "✅ این پرونده رو قبلاً حل کردی و امتیازش هم قبلاً ثبت شده.\n\nبریم سراغ پرونده بعدی؟ 😎");
+        if (!awarded) return sendMenu(env, chatId, "✅ این پرونده رو قبلاً حل کردی و امتیازش هم قبلاً ثبت شده.\n\nبریم سراغ پرونده بعدی؟ 😎", "🏆");
         await unlockAchievements(env, player.id);
-        return sendMenu(env, chatId, `${activeCase.success}\n\n💰 +${activeCase.reward} امتیاز\n\n📁 پرونده ثبت شد. پرونده بعدی باز شد 🔓`);
+        return sendMenu(env, chatId, `${activeCase.success}\n\n💰 +${activeCase.reward} امتیاز\n\n📁 پرونده ثبت شد. پرونده بعدی باز شد 🔓`, "🎉");
       } catch (error) {
         logEvent("game_answer_error", { telegram_id: String(message.from.id), player_id: player.id, case_id: activeCase.id, message: error?.message || "unknown" });
-        return telegram(env, "sendMessage", { chat_id: chatId, text: "⚠️ جواب درست بود، ولی ثبت پرونده با مشکل روبه‌رو شد.\n\nچند لحظه بعد دوباره همین گزینه رو بزن. 👀", reply_markup: puzzleKeyboard(activeCase) });
+        return sendMessage(env, chatId, "⚠️ جواب درست بود، ولی ثبت پرونده با مشکل روبه‌رو شد.\n\nچند لحظه بعد دوباره همین گزینه رو بزن. 👀", puzzleKeyboard(activeCase), 700, "⚠️");
       }
     }
   }
 
-  return sendMenu(env, chatId, "حاجی اینو نفهمیدم 😅\n\nاز دکمه‌های پایین صفحه استفاده کن یا /menu رو بزن.");
+  return sendMenu(env, chatId, "حاجی اینو نفهمیدم 😅\n\nاز دکمه‌های پایین صفحه استفاده کن یا /menu رو بزن.", "🤔");
 }
 
 export default {
