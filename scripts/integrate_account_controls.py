@@ -10,7 +10,6 @@ if IMPORT not in source:
         raise SystemExit("account-controls: score import marker not found")
     source = source.replace(marker, marker + IMPORT, 1)
 
-# Account management belongs inside the profile screen, not the main menu.
 MENU_MARKER = '    [{ text: "🏅 دستاوردها" }, { text: "🎒 کوله‌باز" }],\n    [{ text: "⚙️ حساب کارآگاهی" }, { text: "ℹ️ راهنما" }]'
 MENU_REPLACEMENT = '    [{ text: "🏅 دستاوردها" }, { text: "🎒 کوله‌باز" }],\n    [{ text: "ℹ️ راهنما" }]'
 if MENU_MARKER in source:
@@ -63,7 +62,6 @@ async function confirmAccountAction(env, chatId, player, action) {
 '''
     if FUNCTION_MARKER not in source:
         raise SystemExit("account-controls: profile marker not found")
-    # Rename the existing profile implementation and put a new profile screen in front of it.
     source = source.replace(FUNCTION_MARKER, 'async function legacyProfile(env, chatId, player) {', 1)
     profile_wrapper = '''async function profile(env, chatId, player) {
   const solved = await env.DB.prepare("SELECT COUNT(*) AS count FROM player_progress WHERE player_id=? AND solved=1").bind(player.id).first();
@@ -72,12 +70,11 @@ async function confirmAccountAction(env, chatId, player, action) {
   return sendMessage(env, chatId, `👤 پروفایل کارآگاهی\n\n🕵️ ${esc(player.detective_name || player.first_name || "کارآگاه")}\n🏆 امتیاز: ${player.score || 0}\n⭐ سطح: ${player.level || 1}\n🔥 استریک: ${player.streak || 0}\n📁 پرونده‌های حل‌شده: ${solvedCount}\n\n⚙️ مدیریت حساب`, keyboard([
     [controls.reset.button, controls.delete.button],
     [BACK]
-  ], "پروفایل کارآگاهی...");
+  ], "پروفایل کارآگاهی..."), 550, "👤");
 }
 
 '''
     source = source.replace('async function legacyProfile(env, chatId, player) {', functions + 'async function legacyProfile(env, chatId, player) {', 1)
-    # Place the new wrapper immediately after the legacy function using a marker at the next known function.
     next_marker = 'async function rank(env, chatId) {'
     if next_marker not in source:
         raise SystemExit("account-controls: rank marker not found")
