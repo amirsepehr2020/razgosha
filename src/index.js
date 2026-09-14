@@ -1,0 +1,145 @@
+const MENU = {
+  inline_keyboard: [
+    [{ text: "🔎 شروع بازی", callback_data: "menu:start" }, { text: "📁 پرونده‌ها", callback_data: "menu:cases" }],
+    [{ text: "🏆 رتبه‌بندی", callback_data: "menu:rank" }, { text: "👤 پروفایل", callback_data: "menu:profile" }],
+    [{ text: "ℹ️ راهنما", callback_data: "menu:help" }]
+  ]
+};
+
+const CASES = {
+  "case-001": {
+    id: "case-001",
+    title: "پرونده ۰۰۱ — آخرین قطار",
+    intro: "ساعت ۲۳:۴۷ است. قطار شبانهٔ شماره ۷ در ایستگاه مترو متوقف شده، اما یکی از مسافران ناپدید شده است. درِ واگن از داخل قفل بوده و چهار نفر آخرین کسانی هستند که او را دیده‌اند.",
+    suspects: [
+      ["سارا", "مسئول بلیت‌فروشی ایستگاه"],
+      ["مانی", "مسافر واگن آخر"],
+      ["کاوه", "تعمیرکار شیفت شب"],
+      ["نیما", "نگهبان سکو"]
+    ],
+    clues: [
+      ["ساعت مچی", "ساعت قربانی دقیقاً ۲۳:۳۱ متوقف شده است."],
+      ["بلیط پاره", "نیمی از یک بلیت در سطل زباله پیدا شده است."],
+      ["دوربین", "دوربین راهروی واگن بین ۲۳:۲۹ تا ۲۳:۳۴ قطع بوده است."],
+      ["کلید تعمیرات", "یک کلید مخصوص پنل اضطراری نزدیک صندلی قربانی پیدا شده است."]
+    ],
+    puzzle: {
+      question: "کدام بازهٔ زمانی برای بررسی دقیق‌تر مهم‌تر است؟",
+      options: [["۲۳:۰۰ تا ۲۳:۱۰", false], ["۲۳:۲۹ تا ۲۳:۳۴", true], ["۲۳:۴۰ تا ۲۳:۴۵", false], ["۰۰:۰۰ تا ۰۰:۱۰", false]]
+    },
+    endings: {
+      correct: "🎯 عالی بود! سرنخ‌ها را درست کنار هم گذاشتی. اختلال دوربین دقیقاً با زمان ناپدیدشدن قربانی هم‌زمان است.",
+      wrong: "❌ این فرضیه با شواهد جور درنمی‌آید. یک بار دیگر سرنخ‌ها را بررسی کن."
+    }
+  }
+};
+
+async function telegram(env, method, body) {
+  const response = await fetch(`https://api.telegram.org/bot${env.BOT_TOKEN}/${method}`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(body)
+  });
+  return response.json();
+}
+
+function esc(text) {
+  return String(text).replace(/[&<>]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
+}
+
+async function ensurePlayer(env, from) {
+  const now = new Date().toISOString();
+  await env.DB.prepare(`INSERT INTO players (telegram_id, username, first_name, score, level, created_at, updated_at)
+    VALUES (?, ?, ?, 0, 1, ?, ?)
+    ON CONFLICT(telegram_id) DO UPDATE SET username=excluded.username, first_name=excluded.first_name, updated_at=excluded.updated_at`)
+    .bind(String(from.id), from.username || null, from.first_name || "کارآگاه", now, now).run();
+  return env.DB.prepare("SELECT * FROM players WHERE telegram_id = ?").bind(String(from.id)).first();
+}
+
+async function sendMenu(env, chatId, text = "🕵️ به رازگشا خوش آمدی!\n\nآماده‌ای اولین پرونده‌ات را حل کنی؟") {
+  return telegram(env, "sendMessage", { chat_id: chatId, text, reply_markup: MENU });
+}
+
+async function startCase(env, chatId, telegramId) {
+  const c = CASES["case-001"];
+  await env.DB.prepare(`INSERT INTO player_progress (player_id, case_id, current_step, solved, updated_at)
+    SELECT id, ?, 0, 0, ? FROM players WHERE telegram_id = ?
+    ON CONFLICT(player_id, case_id) DO NOTHING`).bind(c.id, new Date().toISOString(), String(telegramId)).run();
+  return telegram(env, "sendMessage", {
+    chat_id: chatId,
+    text: `📁 ${c.title}\n\n${c.intro}\n\n👥 مظنون‌ها:\n${c.suspects.map((s, i) => `${i + 1}. ${s[0]} — ${s[1]}`).join("\n")}\n\nحالا اولین سرنخ را انتخاب کن.`,
+    reply_markup: { inline_keyboard: c.clues.map((clue, i) => [{ text: `🔍 ${clue[0]}`, callback_data: `clue:${i}` }]).concat([[{ text: "🧩 حل معما", callback_data: "case:puzzle" }], [{ text: "🏠 منوی اصلی", callback_data: "menu:home" }]]) }
+  });
+}
+
+async function profile(env, chatId, player) {
+  return telegram(env, "sendMessage", { chat_id: chatId, text: `👤 پروفایل کارآگاه\n\nنام: ${esc(player.first_name || "کارآگاه")}\nامتیاز: ${player.score}\nسطح: ${player.level}\n\n🕵️ ادامه بده؛ پرونده‌های بیشتری در راه است!`, reply_markup: MENU });
+}
+
+async function rank(env, chatId) {
+  const rows = await env.DB.prepare("SELECT first_name, username, score FROM players ORDER BY score DESC, id ASC LIMIT 10").all();
+  const text = rows.results.length ? rows.results.map((p, i) => `${i + 1}. ${p.first_name || "کارآگاه"} — ${p.score} امتیاز`).join("\n") : "هنوز کسی امتیازی ثبت نکرده است.";
+  return telegram(env, "sendMessage", { chat_id: chatId, text: `🏆 رتبه‌بندی رازگشا\n\n${text}`, reply_markup: MENU });
+}
+
+async function handleCallback(env, query) {
+  const chatId = query.message.chat.id;
+  const data = query.data;
+  const player = await ensurePlayer(env, query.from);
+  await telegram(env, "answerCallbackQuery", { callback_query_id: query.id });
+
+  if (data === "menu:home") return sendMenu(env, chatId);
+  if (data === "menu:start") return startCase(env, chatId, query.from.id);
+  if (data === "menu:cases") return telegram(env, "sendMessage", { chat_id: chatId, text: "📁 پرونده‌های فعلی\n\n🟢 پرونده ۰۰۱ — آخرین قطار\n\nپرونده‌های بعدی به‌زودی باز می‌شوند.", reply_markup: { inline_keyboard: [[{ text: "🔎 شروع پرونده ۰۰۱", callback_data: "menu:start" }], [{ text: "🏠 منوی اصلی", callback_data: "menu:home" }]] } });
+  if (data === "menu:profile") return profile(env, chatId, player);
+  if (data === "menu:rank") return rank(env, chatId);
+  if (data === "menu:help") return telegram(env, "sendMessage", { chat_id: chatId, text: "ℹ️ راهنمای رازگشا\n\n🔎 پرونده را شروع کن.\n🔍 سرنخ‌ها را بررسی کن.\n🧩 معماها را حل کن.\n🎯 در پایان بر اساس شواهد تصمیم بگیر.\n🏆 امتیاز بگیر و در رتبه‌بندی بالا برو.", reply_markup: MENU });
+
+  if (data.startsWith("clue:")) {
+    const index = Number(data.split(":")[1]);
+    const clue = CASES["case-001"].clues[index];
+    return telegram(env, "sendMessage", { chat_id: chatId, text: `🔍 ${clue[0]}\n\n${clue[1]}\n\nهر سرنخ ممکن است بخشی از حقیقت را آشکار کند.`, reply_markup: { inline_keyboard: [[{ text: "🧩 رفتن به معما", callback_data: "case:puzzle" }], [{ text: "🔎 سرنخ بعدی", callback_data: "menu:start" }], [{ text: "🏠 منوی اصلی", callback_data: "menu:home" }]] } });
+  }
+
+  if (data === "case:puzzle") {
+    const p = CASES["case-001"].puzzle;
+    return telegram(env, "sendMessage", { chat_id: chatId, text: `🧩 معمای پرونده\n\n${p.question}`, reply_markup: { inline_keyboard: p.options.map((o, i) => [{ text: o[0], callback_data: `answer:${i}` }]) } });
+  }
+
+  if (data.startsWith("answer:")) {
+    const index = Number(data.split(":")[1]);
+    const correct = CASES["case-001"].puzzle.options[index]?.[1] === true;
+    if (correct) {
+      await env.DB.prepare("UPDATE players SET score = score + 100, level = CAST((score + 100) / 500 AS INTEGER) + 1, updated_at = ? WHERE telegram_id = ?").bind(new Date().toISOString(), String(query.from.id)).run();
+      await env.DB.prepare("UPDATE player_progress SET solved = 1, current_step = current_step + 1, updated_at = ? WHERE player_id = ? AND case_id = ?").bind(new Date().toISOString(), player.id, "case-001").run();
+      return telegram(env, "sendMessage", { chat_id: chatId, text: `${CASES["case-001"].endings.correct}\n\n💯 +۱۰۰ امتیاز\n\nپرونده فعلاً به پایان رسید.`, reply_markup: MENU });
+    }
+    return telegram(env, "sendMessage", { chat_id: chatId, text: `${CASES["case-001"].endings.wrong}\n\n💡 به بازه‌ای که دوربین قطع شده بود دقت کن.`, reply_markup: { inline_keyboard: [[{ text: "🧩 دوباره تلاش می‌کنم", callback_data: "case:puzzle" }], [{ text: "🏠 منوی اصلی", callback_data: "menu:home" }]] } });
+  }
+}
+
+async function handleUpdate(env, update) {
+  if (update.callback_query) return handleCallback(env, update.callback_query);
+  const message = update.message;
+  if (!message?.from || !message.chat) return;
+  const player = await ensurePlayer(env, message.from);
+  const text = (message.text || "").trim();
+  if (text === "/start" || text === "/menu") return sendMenu(env, message.chat.id);
+  if (text === "/profile") return profile(env, message.chat.id, player);
+  if (text === "/rank") return rank(env, message.chat.id);
+  return sendMenu(env, message.chat.id, "🕵️ پیام را متوجه نشدم. از منوی زیر انتخاب کن:");
+}
+
+export default {
+  async fetch(request, env) {
+    if (request.method !== "POST") return new Response("Razgosha is running 🕵️", { status: 200 });
+    try {
+      const update = await request.json();
+      await handleUpdate(env, update);
+      return new Response("OK");
+    } catch (error) {
+      console.error(error);
+      return new Response("OK", { status: 200 });
+    }
+  }
+};
