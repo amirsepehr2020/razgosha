@@ -9,13 +9,13 @@ test("case catalog exposes all 60 detective cases", () => {
   assert.equal(CASES.filter(c => c.advanced).length, 50);
 });
 
-test("60-case catalog keeps the planned difficulty distribution", () => {
+test("60-case catalog keeps the actual difficulty distribution", () => {
   assert.deepEqual(getDifficultyStats(), {
-    "آسان": 7,
-    "متوسط": 13,
-    "سخت": 13,
-    "خیلی سخت": 12,
-    "نابغه": 5,
-    "ویژه": 10
+    "آسان": 12,
+    "متوسط": 23,
+    "سخت": 23,
+    "خیلی سخت": 22,
+    "نابغه": 10,
+    "ویژه": 20
   });
 });
