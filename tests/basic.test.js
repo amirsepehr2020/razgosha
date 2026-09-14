@@ -25,6 +25,13 @@ test("answer callback format remains compatible with case IDs", () => {
   assert.equal(Number(raw), c.answer);
 });
 
+test("bot uses reply keyboards instead of inline keyboards", () => {
+  const source = fs.readFileSync("src/index.js", "utf8");
+  assert.match(source, /keyboard:/);
+  assert.doesNotMatch(source, /inline_keyboard/);
+  assert.doesNotMatch(source, /callback_data/);
+});
+
 test("D1 migrations contain required game tables", () => {
   const initial = fs.readFileSync("migrations/0001_initial.sql", "utf8");
   const rewards = fs.readFileSync("migrations/0002_case_rewards.sql", "utf8");
