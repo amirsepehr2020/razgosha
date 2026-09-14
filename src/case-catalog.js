@@ -1,7 +1,6 @@
-import { CASES as LEGACY_CASES } from "./cases.js";
-import { ADVANCED_CASES } from "./advanced-cases.js";
+import { CASES } from "./cases.js";
 
-export const CASES = [...LEGACY_CASES, ...ADVANCED_CASES];
+export { CASES };
 
 export function getCase(id) {
   return CASES.find(c => c.id === id) || null;
