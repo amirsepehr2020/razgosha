@@ -19,6 +19,8 @@ jobs:
         run: python scripts/fix_gameplay_ux_after_integration.py
       - name: Integrate achievement progression
         run: python scripts/integrate_achievements.py
+      - name: Integrate achievement notifications
+        run: python scripts/add_achievement_notifications.py
       - name: Validate
         run: |
           node --check src/index.js
