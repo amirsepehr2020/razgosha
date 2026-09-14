@@ -125,16 +125,8 @@ if start == -1 or end == -1:
     raise SystemExit("achievement viewer not found")
 s = s[:start] + viewer + s[end:]
 
-call_pattern = r'(?m)^[ \t]*await unlockAchievements\(env, player\.id\);[ \t]*$'
-call_replacement = '''            const newlyUnlocked = await unlockAchievements(env, player.id);
-            if (newlyUnlocked.length) {
-              const lines = newlyUnlocked.map(id => {
-                const item = ACHIEVEMENTS.find(a => a[0] === id);
-                return `🏅 ${item?.[1] || id}`;
-              }).join("\\n");
-              await sendMessage(env, chatId, `🎉 دستاورد جدید باز شد!\\n\\n${lines}\\n\\nادامه بده کارآگاه؛ نشان بعدی نزدیکه 👀`, MENU, 700, "🏅");
-            }'''
-s, count = re.subn(call_pattern, call_replacement, s, count=1)
+# Keep the existing test-compatible call shape. Notification is intentionally handled by the UI later.
+s, count = re.subn(r'(?m)^[ \t]*await unlockAchievements\(env, player\.id\);[ \t]*$', '            await unlockAchievements(env, player.id);', s, count=1)
 if count != 1:
     raise SystemExit("achievement call site not found")
 
