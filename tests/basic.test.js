@@ -1,12 +1,28 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
-import { CASES } from "../src/cases.js";
+import { CASES, getCase } from "../src/cases.js";
 
 test("worker entry and case engine exist", () => {
   assert.equal(fs.existsSync("src/index.js"), true);
   assert.equal(CASES.length, 10);
   assert.ok(CASES.every(c => c.id && c.question && c.options.length === 4));
+});
+
+test("case answers use zero-based indexes and case 001 accepts option B", () => {
+  const c = getCase("case-001");
+  assert.ok(c);
+  assert.equal(c.answer, 1);
+  assert.equal(c.options[c.answer], "۲۳:۲۹ تا ۲۳:۳۴");
+  assert.equal(c.options.length, 4);
+});
+
+test("answer callback format remains compatible with case IDs", () => {
+  const c = getCase("case-001");
+  const callback = `answer:${c.id}:${c.answer}`;
+  const [, caseId, raw] = callback.split(":");
+  assert.equal(caseId, "case-001");
+  assert.equal(Number(raw), c.answer);
 });
 
 test("D1 migrations contain required game tables", () => {
