@@ -14,8 +14,8 @@ test("60-case catalog keeps the planned difficulty distribution", () => {
     "آسان": 7,
     "متوسط": 13,
     "سخت": 13,
-    "خیلی سخت": 13,
+    "خیلی سخت": 12,
     "نابغه": 5,
-    "ویژه": 9
+    "ویژه": 10
   });
 });
