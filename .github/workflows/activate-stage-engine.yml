@@ -17,14 +17,14 @@ jobs:
         run: python scripts/fix_case_catalog.py
       - name: Harden gameplay UX
         run: python scripts/fix_gameplay_ux_after_integration.py
+      - name: Integrate account controls
+        run: python scripts/integrate_account_controls.py
       - name: Integrate achievement progression
         run: python scripts/integrate_achievements.py
       - name: Integrate achievement notifications
         run: python scripts/add_achievement_notifications.py
       - name: Integrate global case mistake scoring
         run: python scripts/integrate_score_penalty.py
-      - name: Integrate account controls
-        run: python scripts/integrate_account_controls.py
       - name: Validate
         run: |
           node --check src/index.js
