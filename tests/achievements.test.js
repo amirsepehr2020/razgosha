@@ -11,7 +11,7 @@ const IDS = [
 test("achievement map covers all progression and hidden milestones", () => {
   const source = fs.readFileSync("src/index.js", "utf8");
   for (const id of IDS) assert.match(source, new RegExp(`\\[\\"${id}\\"`));
-  assert.match(source, /🔒 بعض نشان‌ها شرایط مخفی دارن/);
+  assert.match(source, /🔒 بعضی نشان‌ها شرایط مخفی دارن/);
 });
 
 test("achievement unlock logic keeps the major case milestones", () => {
