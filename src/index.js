@@ -24,7 +24,33 @@ const ITEMS = [["hint", "🔍 سرنخ اضافه"], ["remove", "💡 حذف ی�
 const BACK = "↩️ بازگشت به منو";
 const CASES_LABEL = "📁 پرونده‌های دیگر";
 const PUZZLE_LABEL = "🧩 رفتن سراغ معما";
+const HELP_LABEL = "ℹ️ راهنما";
+const HELP_BACK = "↩️ بازگشت به راهنما";
 const CLUE_LABELS = ["🔍 سرنخ ۱", "🔍 سرنخ ۲", "🔍 سرنخ ۳", "🔍 سرنخ ۴"];
+
+const HELP_TOPICS = [
+  ["🎮 نحوه بازی", "how-to"],
+  ["📜 قوانین رازگشا", "rules"],
+  ["🏆 امتیاز و رتبه‌بندی", "score"],
+  ["🏅 دستاوردها", "achievements"],
+  ["🎒 آیتم‌ها و کوله‌باز", "items"],
+  ["🎯 مأموریت روزانه", "daily"],
+  ["🔐 حساب کاربری", "account"],
+  ["🕵️ نکات کارآگاهی", "tips"],
+  ["👨‍💻 درباره رازگشا", "about"]
+];
+
+const HELP_CONTENT = {
+  "how-to": `🎮 نحوه بازی\n\n🔎 از بخش «پرونده‌ها» یک پرونده باز رو انتخاب کن.\n\n🔍 سرنخ‌ها رو یکی‌یکی بررسی کن و جزئیات رو کنار هم بذار.\n\n🧩 وقتی آماده شدی، برو سراغ معما و یکی از چهار گزینه رو انتخاب کن.\n\n🏆 جواب درست یعنی پرونده حل شده و امتیازش ثبت می‌شه.\n\n🔓 پرونده‌ها به‌ترتیب باز می‌شن؛ پس هر پرونده بخشی از مسیرته.`,
+  rules: `📜 قوانین رازگشا\n\n1️⃣ هر پرونده رو با دقت بررسی کن.\n2️⃣ قبل از جواب دادن، همه سرنخ‌ها رو بخون.\n3️⃣ حدس تصادفی راه خوبی برای حل پرونده نیست.\n4️⃣ هر پرونده فقط یک‌بار امتیاز اصلی خودش رو می‌ده.\n5️⃣ پرونده‌ها به‌ترتیب باز می‌شن.\n6️⃣ تقلب، سوءاستفاده یا تلاش برای خراب کردن سیستم ممنوعه.\n\n🕵️ اینجا قرار نیست فقط حدس بزنی؛ باید استدلال کنی.`,
+  score: `🏆 امتیاز و رتبه‌بندی\n\n💰 هر پرونده برای حل درست، امتیاز خودش رو داره.\n\n⭐ با افزایش امتیاز، سطح کارآگاهت هم بالاتر می‌ره.\n\n🏆 بخش «رتبه‌بندی» بهترین کارآگاه‌ها رو نشون می‌ده.\n\n🎯 مأموریت روزانه هم می‌تونه به امتیازت اضافه کنه.\n\n🔥 هدف فقط حل کردن نیست؛ حرفه‌ای‌تر حل کن و بالاتر برو.`,
+  achievements: `🏅 دستاوردها\n\nدستاوردها برای ثبت پیشرفت‌های مهمت هستن.\n\n🕵️ اولین پرونده\n🔥 حل ۳ پرونده\n🧠 حل ۵ پرونده\n👑 حل هر ۱۰ پرونده فعلی\n\nهرچی بیشتر پیش بری، نشان‌های بیشتری برای پروفایلت باز می‌شن.`,
+  items: `🎒 آیتم‌ها و کوله‌باز\n\n🎒 کوله‌باز جاییه که آیتم‌های کارآگاهی‌ات رو می‌بینی.\n\n🔍 سرنخ اضافه\n💡 حذف یک گزینه\n\nفعلاً زیرساخت آیتم‌ها آماده‌ست و با گسترش پرونده‌ها کاربردهای بیشتری پیدا می‌کنن.`,
+  daily: `🎯 مأموریت روزانه\n\nهر روز می‌تونی مأموریت روزانه‌ات رو دریافت کنی.\n\n💰 جایزه فعلی: +۲۵ امتیاز\n🔥 با دریافت روزانه، استریکت هم ثبت می‌شه.\n\n⏰ اگر امروز جایزه رو گرفتی، باید تا روز بعد صبر کنی.`,
+  account: `🔐 حساب کاربری\n\nبا زدن /start حساب کارآگاهی‌ات ساخته می‌شه.\n\n👤 اطلاعات پروفایل، امتیاز، سطح، استریک و پیشرفت پرونده‌ها به حسابت متصل می‌مونه.\n\n📱 اگر با همان حساب تلگرام برگردی، پیشرفتت هم همراهته.`,
+  tips: `🕵️ نکات کارآگاهی\n\n🔍 همه سرنخ‌ها رو کنار هم بذار؛ یک سرنخ به‌تنهایی ممکنه گمراه‌کننده باشه.\n\n🧠 دنبال ارتباط بین زمان، افراد و اتفاق‌ها بگرد.\n\n👀 جزئیات کوچک رو دست‌کم نگیر.\n\n❌ اگر جوابت غلط بود، سریع حدس بعدی نزن؛ دوباره شواهد رو بررسی کن.\n\n🎯 رازگشا با استدلال حل می‌شه، نه شانس.`,
+  about: `👨‍💻 درباره رازگشا\n\n🕵️ رازگشا یک بازی معمایی و کارآگاهی فارسیه؛ برای کسایی که دوست دارن از بین سرنخ‌ها به حقیقت برسن.\n\n👨‍💻 سازنده: @am_sepehr_s\n\n🔥 پرونده‌های بیشتر، مراحل پیچیده‌تر و سیستم‌های جدیدتر در راهه.\n\nآماده‌ای؟ پرونده بعدی منتظرته. 🔎`
+};
 
 function logEvent(event, details = {}) {
   console.log(JSON.stringify({ event, ...details, timestamp: new Date().toISOString() }));
@@ -98,6 +124,28 @@ function puzzleKeyboard(c) {
     [`D) ${c.options[3]}`],
     ["🔍 دیدن سرنخ‌ها", BACK]
   ], "جوابت رو انتخاب کن...");
+}
+
+function helpKeyboard() {
+  return keyboard([
+    [HELP_TOPICS[0][0], HELP_TOPICS[1][0]],
+    [HELP_TOPICS[2][0], HELP_TOPICS[3][0]],
+    [HELP_TOPICS[4][0], HELP_TOPICS[5][0]],
+    [HELP_TOPICS[6][0], HELP_TOPICS[7][0]],
+    [HELP_TOPICS[8][0]],
+    [BACK]
+  ], "موضوع راهنما رو انتخاب کن...");
+}
+
+function helpTopicKeyboard() {
+  return keyboard([
+    [HELP_BACK, BACK]
+  ], "موضوع دیگه‌ای می‌خوای؟");
+}
+
+function helpTopicId(text) {
+  const topic = HELP_TOPICS.find(([label]) => label === text);
+  return topic?.[1] || null;
 }
 
 async function sendTyping(env, chatId, durationMs = 650) {
@@ -211,6 +259,16 @@ async function daily(env, chatId, player) {
   return sendMessage(env, chatId, `🎯 مأموریت امروز انجام شد!\n\n💰 +۲۵ امتیاز\n🔥 استریک: ${newStreak} روز\n\nهمین‌جوری ادامه بده کارآگاه؛ فردا هم یه جایزه داریم 👀`, MENU, 800, "🎉");
 }
 
+async function showHelp(env, chatId, reaction = "ℹ️") {
+  return sendMessage(env, chatId, "ℹ️ مرکز راهنمای رازگشا\n\nهر چیزی که برای حرفه‌ای شدن در رازگشا لازم داری اینجاست.\n\nیک موضوع رو انتخاب کن 👇", helpKeyboard(), 800, reaction);
+}
+
+async function showHelpTopic(env, chatId, topicId) {
+  const text = HELP_CONTENT[topicId];
+  if (!text) return showHelp(env, chatId, "🤔");
+  return sendMessage(env, chatId, text, helpTopicKeyboard(), 850, "🔎");
+}
+
 async function awardCaseScore(env, telegramId, playerId, caseId) {
   const c = getCase(caseId);
   if (!c) throw new Error(`unknown_case:${caseId}`);
@@ -273,7 +331,11 @@ async function handleMessage(env, message) {
   if (text === "🎯 مأموریت امروز") return daily(env, chatId, player);
   if (text === "🏅 دستاوردها") return achievements(env, chatId, player);
   if (text === "🎒 کوله‌باز") return inventory(env, chatId, player);
-  if (text === "ℹ️ راهنما") return sendMessage(env, chatId, "ℹ️ راهنمای سریع\n\n🔎 پرونده رو انتخاب کن.\n🔍 سرنخ‌ها رو بخون.\n🧩 معما رو حل کن.\n🏆 امتیاز بگیر.\n🏅 دستاورد باز کن.\n🎒 آیتم جمع کن.\n🎯 هر روز هم مأموریت داری.\n\nاگه جایی گیر کردی، اول همه سرنخ‌ها رو کنار هم بذار؛ رازگشا با حدس کور جلو نمی‌ره 😉", MENU, 650, "ℹ️");
+  if (text === HELP_LABEL) return showHelp(env, chatId);
+
+  const helpTopic = helpTopicId(text);
+  if (helpTopic) return showHelpTopic(env, chatId, helpTopic);
+  if (text === HELP_BACK) return showHelp(env, chatId);
 
   const caseId = caseFromButton(text);
   if (caseId) return startCase(env, chatId, player, caseId);
