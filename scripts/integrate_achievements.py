@@ -29,9 +29,8 @@ new = '''const ACHIEVEMENTS = [
 ];'''
 if old in s:
     s = s.replace(old, new, 1)
-else:
-    if '"perfect-streak"' not in s:
-        raise SystemExit("achievement block not found")
+elif '"perfect-streak"' not in s:
+    raise SystemExit("achievement block not found")
 
 help_pattern = r'  achievements: `🏅 دستاوردها\\n\\n.*?`,\n  items:'
 help_replacement = '''  achievements: `🏅 دستاوردها\\n\\nدستاوردها مسیر پیشرفت کارآگاهیت رو می‌سازن.\\n\\n🟢 شروع: اولین پرونده، ۳ پرونده، ۵ پرونده\\n🔵 پیشرفت: ۱۰، ۲۰ و ۳۰ پرونده\\n🟣 حرفه‌ای: ۵۰ و ۶۰ پرونده\\n🔴 مخفی: چشم عقاب، ردیاب زمان، دست پشت پرده و غیرممکن؟\\n\\n🔒 بعضی نشان‌ها شرایط مخفی دارن؛ باید خودت کشفشون کنی.\\n\\nهر نشان یعنی یک قدم نزدیک‌تر به استاد کارآگاهی شدن. 👑`,
@@ -52,9 +51,7 @@ new_unlock = '''      if (solved >= 10) wanted.push("ten-cases");
       if (solved >= 60) wanted.push("sixty-cases");
       if (solved >= 1) wanted.push("clue-tracker");
       if (solved >= 5) wanted.push("puzzle-solver");'''
-if new_unlock not in s:
-    if old_unlock not in s:
-        raise SystemExit("achievement unlock block not found")
+if old_unlock in s:
     s = s.replace(old_unlock, new_unlock, 1)
 
 path.write_text(s, encoding="utf-8")
