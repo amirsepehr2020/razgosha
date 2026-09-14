@@ -21,12 +21,15 @@ jobs:
         run: python scripts/integrate_achievements.py
       - name: Integrate achievement notifications
         run: python scripts/add_achievement_notifications.py
+      - name: Integrate global case mistake scoring
+        run: python scripts/integrate_score_penalty.py
       - name: Validate
         run: |
           node --check src/index.js
           node --check src/case-pagination.js
           node --check src/stage-engine.js
           node --check src/cases.js
+          node --check src/score-penalty.js
           npm test
       - name: Commit activation
         run: |
