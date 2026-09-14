@@ -2,6 +2,7 @@ name = "razgosha"
 main = "src/index.js"
 compatibility_date = "2026-09-14"
 
-# The D1 binding is intentionally configured in the Cloudflare dashboard
-# so the existing database `my-database-bot` can be attached without
-# committing its database ID to this public repository.
+[[d1_databases]]
+binding = "DB"
+database_name = "my-database-bot"
+database_id = "db7f56f2-56cc-40c0-837e-fd1ac4835dfd"
