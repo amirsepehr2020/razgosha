@@ -74,7 +74,6 @@ unlocker = '''async function unlockAchievements(env, playerId) {
     const result = await env.DB.prepare("INSERT OR IGNORE INTO player_achievements (player_id, achievement_id, unlocked_at) VALUES (?, ?, ?)").bind(playerId, id, new Date().toISOString()).run();
     if (Number(result?.meta?.changes || 0) > 0) newlyUnlocked.push(id);
   }
-
   for (const id of newlyUnlocked) {
     const reward = rewards[id] || 0;
     if (reward) await env.DB.prepare("UPDATE players SET score=score+?, updated_at=? WHERE id=?").bind(reward, new Date().toISOString(), playerId).run();
@@ -126,9 +125,8 @@ if start == -1 or end == -1:
     raise SystemExit("achievement viewer not found")
 s = s[:start] + viewer + s[end:]
 
-# Keep the established test-compatible unlock call and add a real notification for newly unlocked items.
-old = '            await unlockAchievements(env, player.id);'
-new = '''            const newlyUnlocked = await unlockAchievements(env, player.id);
+call_pattern = r'(?m)^[ \t]*await unlockAchievements\(env, player\.id\);[ \t]*$'
+call_replacement = '''            const newlyUnlocked = await unlockAchievements(env, player.id);
             if (newlyUnlocked.length) {
               const lines = newlyUnlocked.map(id => {
                 const item = ACHIEVEMENTS.find(a => a[0] === id);
@@ -136,9 +134,9 @@ new = '''            const newlyUnlocked = await unlockAchievements(env, player.
               }).join("\\n");
               await sendMessage(env, chatId, `🎉 دستاورد جدید باز شد!\\n\\n${lines}\\n\\nادامه بده کارآگاه؛ نشان بعدی نزدیکه 👀`, MENU, 700, "🏅");
             }'''
-if old not in s:
+s, count = re.subn(call_pattern, call_replacement, s, count=1)
+if count != 1:
     raise SystemExit("achievement call site not found")
-s = s.replace(old, new, 1)
 
 path.write_text(s, encoding="utf-8")
 print("advanced achievements integrated")
