@@ -23,5 +23,12 @@ test("achievement integration is wired to persistent player achievements", () =>
   const source = fs.readFileSync("src/index.js", "utf8");
   assert.match(source, /player_achievements/);
   assert.match(source, /INSERT OR IGNORE INTO player_achievements/);
-  assert.match(source, /unlockAchievements\\(env, player\\.id\\)/);
+  assert.match(source, /unlockAchievements\(env, player\.id\)/);
+});
+
+test("achievement UI exposes progress counters and masks hidden achievements", () => {
+  const source = fs.readFileSync("src/index.js", "utf8");
+  assert.match(source, /Math\.min\(Number\(p\[0\]\), Number\(p\[1\]\)\)/);
+  assert.match(source, /دستاورد مخفی — هنوز کشف نشده/);
+  assert.match(source, /ACHIEVEMENTS\.length/);
 });
