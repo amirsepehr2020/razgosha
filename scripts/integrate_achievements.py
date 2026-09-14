@@ -4,7 +4,7 @@ import re
 path = Path("src/index.js")
 s = path.read_text(encoding="utf-8")
 
-# Keep the achievement catalog deterministic and idempotent.
+# Replace the achievement catalog deterministically and safely.
 start = s.find("const ACHIEVEMENTS = [")
 end = s.find("];", start)
 if start == -1 or end == -1:
@@ -29,25 +29,21 @@ new = '''const ACHIEVEMENTS = [
 ];'''
 s = s[:start] + new + s[end + 2:]
 
-# Update the help text without depending on exact surrounding formatting.
 help_new = '''  achievements: `🏅 دستاوردها\\n\\nدستاوردها مسیر پیشرفت کارآگاهیت رو می‌سازن.\\n\\n🟢 شروع: اولین پرونده، ۳ پرونده، ۵ پرونده\\n🔵 پیشرفت: ۱۰، ۲۰ و ۳۰ پرونده\\n🟣 حرفه‌ای: ۵۰ و ۶۰ پرونده\\n🔴 مخفی: چشم عقاب، ردیاب زمان، دست پشت پرده و غیرممکن؟\\n\\n🔒 بعضی نشان‌ها شرایط مخفی دارن؛ باید خودت کشفشون کنی.\\n\\nهر نشان یعنی یک قدم نزدیک‌تر به استاد کارآگاهی شدن. 👑`,'''
 help_pattern = r'  achievements: `.*?`,\n  items:'
-s, count = re.subn(help_pattern, help_new + "\n  items:", s, count=1, flags=re.S)
+s, count = re.subn(help_pattern, lambda _m: help_new + "\n  items:", s, count=1, flags=re.S)
 if count != 1:
     raise SystemExit("achievement help block not found")
 
-# Fix multi-page reply-keyboard navigation directly so every page is reachable.
+# Multi-page reply-keyboard navigation must preserve its target page.
 s = s.replace(
     'if (currentPage > 1) nav.push("◀️ صفحه قبل");\n  if (currentPage < totalPages) nav.push("صفحه بعد ▶️");',
     'if (currentPage > 1) nav.push(`◀️ صفحه ${currentPage - 1}`);\n  if (currentPage < totalPages) nav.push(`صفحه ${currentPage + 1} ▶️`);'
 )
-s = re.sub(
-    r'  if \(text === "◀️ صفحه قبل" \|\| text === "صفحه بعد ▶️"\) return showCases\(env, chatId, player, text === "◀️ صفحه قبل" \? 1 : 2\);',
-    '''  const pageNav = text.match(/^(?:◀️ صفحه (\\d+)|صفحه (\\d+) ▶️)$/);
-  if (pageNav) return showCases(env, chatId, player, Number(pageNav[1] || pageNav[2]));''',
-    s,
-    count=1
-)
+
+page_pattern = r'  if \(text === "◀️ صفحه قبل" \|\| text === "صفحه بعد ▶️"\) return showCases\(env, chatId, player, text === "◀️ صفحه قبل" \? 1 : 2\);'
+page_replacement = '  const pageNav = text.match(/^(?:◀️ صفحه (\\d+)|صفحه (\\d+) ▶️)$/);\n  if (pageNav) return showCases(env, chatId, player, Number(pageNav[1] || pageNav[2]));'
+s, count = re.subn(page_pattern, lambda _m: page_replacement, s, count=1)
 
 path.write_text(s, encoding="utf-8")
-print("achievement and pagination integration complete")
+print("achievement integration complete")
