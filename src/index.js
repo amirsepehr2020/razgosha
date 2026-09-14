@@ -16,10 +16,21 @@ const MENU = {
 };
 
 const ACHIEVEMENTS = [
-  ["first-case", "اولین پرونده", "اولین پرونده‌ات رو حل کن 🕵️"],
-  ["three-cases", "سه‌تایی", "سه پرونده رو جمع کن 🔥"],
-  ["five-cases", "کارآگاه حرفه‌ای", "پنج پرونده رو حل کن 🧠"],
-  ["ten-cases", "افسانه رازگشا", "هر ۶۰ پرونده رو حل کن 👑"]
+  ["first-case", "🕵️ کارآگاه تازه‌کار", "اولین پرونده‌ات رو حل کن"],
+  ["clue-tracker", "🔎 ردیاب سرنخ", "۱۰ سرنخ از پرونده‌های حل‌شده جمع کن"],
+  ["three-cases", "🔥 سه‌تایی", "۳ پرونده رو حل کن"],
+  ["puzzle-solver", "🧩 حل‌کننده معما", "۵ پرونده چندمرحله‌ای رو حل کن"],
+  ["five-cases", "🧠 کارآگاه حرفه‌ای", "۵ پرونده رو حل کن"],
+  ["ten-cases", "📚 پرونده‌خوان", "۱۰ پرونده رو حل کن"],
+  ["twenty-cases", "🎯 کارآگاه جدی", "۲۰ پرونده رو حل کن"],
+  ["thirty-cases", "🧠 ذهن تحلیلگر", "۳۰ پرونده رو حل کن"],
+  ["fifty-cases", "🔥 شکارچی راز", "۵۰ پرونده رو حل کن"],
+  ["sixty-cases", "👑 استاد کارآگاهی", "هر ۶۰ پرونده رو حل کن"],
+  ["perfect-streak", "⚡ زنجیره بی‌نقص", "۵ پرونده رو پشت‌سرهم بدون پاسخ اشتباه حل کن"],
+  ["eagle-eye", "👁️ چشم عقاب", "یک پرونده سخت با شواهد کلیدی رو حل کن"],
+  ["time-tracker", "🕰️ ردیاب زمان", "یک پرونده مبتنی بر زمان رو حل کن"],
+  ["mastermind", "🎭 ذهن پشت پرده", "یک پرونده خیلی سخت رو حل کن"],
+  ["impossible", "🧨 غیرممکن؟", "یک پرونده ویژه رو حل کن"]
 ];
 
 const ITEMS = [["hint", "🔍 سرنخ اضافه"], ["remove", "💡 حذف یک گزینه"]];
@@ -47,7 +58,19 @@ const HELP_CONTENT = {
   "how-to": `🎮 نحوه بازی\n\n🔎 از بخش «پرونده‌ها» یک پرونده باز رو انتخاب کن.\n\n🔍 سرنخ‌ها رو یکی‌یکی بررسی کن و جزئیات رو کنار هم بذار.\n\n🧩 وقتی آماده شدی، برو سراغ معما و یکی از چهار گزینه رو انتخاب کن.\n\n🏆 جواب درست یعنی پرونده حل شده و امتیازش ثبت می‌شه.\n\n🔓 پرونده‌ها به‌ترتیب باز می‌شن؛ پس هر پرونده بخشی از مسیرته.`,
   rules: `📜 قوانین رازگشا\n\n1️⃣ هر پرونده رو با دقت بررسی کن.\n2️⃣ قبل از جواب دادن، همه سرنخ‌ها رو بخون.\n3️⃣ حدس تصادفی راه خوبی برای حل پرونده نیست.\n4️⃣ هر پرونده فقط یک‌بار امتیاز اصلی خودش رو می‌ده.\n5️⃣ پرونده‌ها به‌ترتیب باز می‌شن.\n6️⃣ تقلب، سوءاستفاده یا تلاش برای خراب کردن سیستم ممنوعه.\n\n🕵️ اینجا قرار نیست فقط حدس بزنی؛ باید استدلال کنی.`,
   score: `🏆 امتیاز و رتبه‌بندی\n\n💰 هر پرونده برای حل درست، امتیاز خودش رو داره.\n\n⭐ با افزایش امتیاز، سطح کارآگاهت هم بالاتر می‌ره.\n\n🏆 بخش «رتبه‌بندی» بهترین کارآگاه‌ها رو نشون می‌ده.\n\n🎯 مأموریت روزانه هم می‌تونه به امتیازت اضافه کنه.\n\n🔥 هدف فقط حل کردن نیست؛ حرفه‌ای‌تر حل کن و بالاتر برو.`,
-  achievements: `🏅 دستاوردها\n\nدستاوردها برای ثبت پیشرفت‌های مهمت هستن.\n\n🕵️ اولین پرونده\n🔥 حل ۳ پرونده\n🧠 حل ۵ پرونده\n👑 حل هر ۱۰ پرونده فعلی\n\nهرچی بیشتر پیش بری، نشان‌های بیشتری برای پروفایلت باز می‌شن.`,
+  achievements: `🏅 دستاوردها
+
+مسیر کارآگاهیت اینجاست.
+
+🟢 شروع: اولین، سومین و پنجمین پرونده
+🔵 پیشرفت: ۱۰، ۲۰ و ۳۰ پرونده
+🟣 حرفه‌ای: ۵۰ و ۶۰ پرونده
+🟠 مهارت: ردیاب سرنخ و حل‌کننده معما
+🔴 مخفی: چشم عقاب، ردیاب زمان، ذهن پشت پرده و غیرممکن؟
+
+📊 پیشرفت دستاوردهای قابل‌نمایش به شکل x/y دیده می‌شه.
+🔒 بعضی نشان‌ها شرایط مخفی دارن و تا زمان کشف، هویت و شرطشون نمایش داده نمی‌شه.
+🎁 هر نشان جدید می‌تونه جایزه امتیازی داشته باشه.`,
   items: `🎒 آیتم‌ها و کوله‌باز\n\n🎒 کوله‌باز جاییه که آیتم‌های کارآگاهی‌ات رو می‌بینی.\n\n🔍 سرنخ اضافه\n💡 حذف یک گزینه\n\nفعلاً زیرساخت آیتم‌ها آماده‌ست و با گسترش پرونده‌ها کاربردهای بیشتری پیدا می‌کنن.`,
   daily: `🎯 مأموریت روزانه\n\nهر روز می‌تونی مأموریت روزانه‌ات رو دریافت کنی.\n\n💰 جایزه فعلی: +۲۵ امتیاز\n🔥 با دریافت روزانه، استریکت هم ثبت می‌شه.\n\n⏰ اگر امروز جایزه رو گرفتی، باید تا روز بعد صبر کنی.`,
   account: `🔐 حساب کاربری\n\nبا زدن /start حساب کارآگاهی‌ات ساخته می‌شه.\n\n👤 اطلاعات پروفایل، امتیاز، سطح، استریک و پیشرفت پرونده‌ها به حسابت متصل می‌مونه.\n\n📱 اگر با همان حساب تلگرام برگردی، پیشرفتت هم همراهته.`,
@@ -98,8 +121,8 @@ function caseListKeyboard(page = 1) {
   const { page: currentPage, totalPages } = getCasePage(CASES, page);
   const rows = [];
   const nav = [];
-  if (currentPage > 1) nav.push("◀️ صفحه قبل");
-  if (currentPage < totalPages) nav.push("صفحه بعد ▶️");
+  if (currentPage > 1) nav.push(`◀️ صفحه ${currentPage - 1}`);
+  if (currentPage < totalPages) nav.push(`صفحه ${currentPage + 1} ▶️`);
   if (nav.length) rows.push(nav);
   rows.push(["🎯 پرونده قابل انجام"]);
   rows.push([BACK]);
@@ -255,12 +278,38 @@ async function rank(env, chatId) {
 }
 
 async function achievements(env, chatId, player) {
-  const rows = await env.DB.prepare("SELECT achievement_id FROM player_achievements WHERE player_id = ?").bind(player.id).all();
+  const rows = await env.DB.prepare("SELECT achievement_id FROM player_achievements WHERE player_id=?").bind(player.id).all();
   const unlocked = new Set(rows.results.map(r => r.achievement_id));
-  const text = ACHIEVEMENTS.map(a => `${unlocked.has(a[0]) ? "🏅" : "🔒"} ${a[1]} — ${a[2]}`).join("\n");
-  return sendMessage(env, chatId, `🏅 دستاوردها\n\n${text}\n\nهرچی بیشتر بازی کنی، این لیست بیشتر پر می‌شه 😎`, MENU, 650, "🏅");
+  const progressRows = await env.DB.prepare("SELECT case_id FROM player_progress WHERE player_id=? AND solved=1").bind(player.id).all();
+  const solvedIds = new Set(progressRows.results.map(r => r.case_id));
+  const solved = solvedIds.size;
+  const solvedCases = CASES.filter(c => solvedIds.has(c.id));
+  const clueCount = solvedCases.reduce((sum, c) => sum + (Array.isArray(c.clues) ? c.clues.length : 0), 0);
+  const multiStageCount = solvedCases.filter(c => getStageCount(c) >= 3).length;
+  const progress = {
+    "first-case": [solved, 1], "clue-tracker": [clueCount, 10], "three-cases": [solved, 3],
+    "puzzle-solver": [multiStageCount, 5], "five-cases": [solved, 5], "ten-cases": [solved, 10],
+    "twenty-cases": [solved, 20], "thirty-cases": [solved, 30], "fifty-cases": [solved, 50], "sixty-cases": [solved, 60]
+  };
+  const hidden = new Set(["perfect-streak", "eagle-eye", "time-tracker", "mastermind", "impossible"]);
+  const visible = ACHIEVEMENTS.map(a => {
+    if (hidden.has(a[0]) && !unlocked.has(a[0])) return "🔒 دستاورد مخفی — هنوز کشف نشده";
+    const p = progress[a[0]];
+    const suffix = p ? ` — ${Math.min(Number(p[0]), Number(p[1]))}/${p[1]}` : " — کشف‌شده";
+    return `${unlocked.has(a[0]) ? "🏅" : "🔒"} ${a[1]}${suffix}`;
+  });
+  const unlockedCount = ACHIEVEMENTS.filter(a => unlocked.has(a[0])).length;
+  const text = [
+    "🏅 دستاوردها", "", `📊 ${unlockedCount}/${ACHIEVEMENTS.length} نشان باز شده`, "",
+    "🟢 شروع", ...visible.slice(0, 3), "",
+    "🔵 پیشرفت", ...visible.slice(3, 6), "",
+    "🟣 حرفه‌ای", ...visible.slice(6, 8), "",
+    "🟠 مهارت", ...visible.slice(8, 10), "",
+    "🔴 مخفی", ...visible.slice(10), "",
+    "🎁 هر بار که نشان جدیدی باز کنی، همون لحظه بهت خبر می‌دم."
+  ].join("\n");
+  return sendMessage(env, chatId, text, MENU, 700, "🏅");
 }
-
 async function inventory(env, chatId, player) {
   const rows = await env.DB.prepare("SELECT item_id, quantity FROM player_inventory WHERE player_id = ?").bind(player.id).all();
   const names = Object.fromEntries(ITEMS);
@@ -310,20 +359,55 @@ async function awardCaseScore(env, telegramId, playerId, caseId) {
 }
 
 async function unlockAchievements(env, playerId) {
-  const row = await env.DB.prepare("SELECT COUNT(*) AS solved FROM player_progress WHERE player_id=? AND solved=1").bind(playerId).first();
-  const solved = Number(row?.solved || 0);
+  const rows = await env.DB.prepare("SELECT case_id FROM player_progress WHERE player_id=? AND solved=1").bind(playerId).all();
+  const solvedIds = new Set(rows.results.map(r => r.case_id));
+  const solved = solvedIds.size;
+  const solvedCases = CASES.filter(c => solvedIds.has(c.id));
+  const clueCount = solvedCases.reduce((sum, c) => sum + (Array.isArray(c.clues) ? c.clues.length : 0), 0);
+  const multiStageCount = solvedCases.filter(c => getStageCount(c) >= 3).length;
   const wanted = [];
+
   if (solved >= 1) wanted.push("first-case");
+  if (clueCount >= 10) wanted.push("clue-tracker");
   if (solved >= 3) wanted.push("three-cases");
+  if (multiStageCount >= 5) wanted.push("puzzle-solver");
   if (solved >= 5) wanted.push("five-cases");
   if (solved >= 10) wanted.push("ten-cases");
   if (solved >= 20) wanted.push("twenty-cases");
   if (solved >= 30) wanted.push("thirty-cases");
   if (solved >= 50) wanted.push("fifty-cases");
   if (solved >= 60) wanted.push("sixty-cases");
-  for (const id of wanted) await env.DB.prepare("INSERT OR IGNORE INTO player_achievements (player_id, achievement_id, unlocked_at) VALUES (?, ?, ?)").bind(playerId, id, new Date().toISOString()).run();
-}
 
+  const hiddenCase = solvedCases.some(c => {
+    const text = `${c.title} ${c.intro} ${(c.clues || []).join(" ")}`;
+    return c.difficulty === "سخت" && /کلیدی|مهم|اثرگذار/.test(text);
+  });
+  const timeCase = solvedCases.some(c => /زمان|ساعت|دقیقه|تاریخ|بازه|timeline|خط زمانی/i.test(`${c.title} ${c.intro} ${(c.clues || []).join(" ")}`));
+  const veryHard = solvedCases.some(c => /خیلی سخت|نابغه|genius/i.test(String(c.difficulty || "")));
+  const special = solvedCases.some(c => /ویژه|special/i.test(String(c.difficulty || "")));
+  if (hiddenCase) wanted.push("eagle-eye");
+  if (timeCase) wanted.push("time-tracker");
+  if (veryHard) wanted.push("mastermind");
+  if (special) wanted.push("impossible");
+
+  const rewards = {
+    "first-case": 10, "clue-tracker": 15, "three-cases": 15, "puzzle-solver": 25,
+    "five-cases": 20, "ten-cases": 30, "twenty-cases": 40, "thirty-cases": 50,
+    "fifty-cases": 75, "sixty-cases": 100, "perfect-streak": 50,
+    "eagle-eye": 25, "time-tracker": 25, "mastermind": 35, "impossible": 50
+  };
+
+  const newlyUnlocked = [];
+  for (const id of wanted) {
+    const result = await env.DB.prepare("INSERT OR IGNORE INTO player_achievements (player_id, achievement_id, unlocked_at) VALUES (?, ?, ?)").bind(playerId, id, new Date().toISOString()).run();
+    if (Number(result?.meta?.changes || 0) > 0) newlyUnlocked.push(id);
+  }
+  for (const id of newlyUnlocked) {
+    const reward = rewards[id] || 0;
+    if (reward) await env.DB.prepare("UPDATE players SET score=score+?, updated_at=? WHERE id=?").bind(reward, new Date().toISOString(), playerId).run();
+  }
+  return newlyUnlocked;
+}
 function caseFromButton(text) {
   const match = String(text || "").match(/^📁 (\d{3}) —/);
   return match ? `case-${match[1]}` : null;
@@ -360,7 +444,8 @@ async function handleMessage(env, message) {
     const nextId = getUnlockedCaseId(CASES, solvedIds);
     return nextId ? startCase(env, chatId, player, nextId) : sendMenu(env, chatId, "👑 همه پرونده‌های فعلی رو حل کردی!", "🎉");
   }
-  if (text === "◀️ صفحه قبل" || text === "صفحه بعد ▶️") return showCases(env, chatId, player, text === "◀️ صفحه قبل" ? 1 : 2);
+  const pageNav = text.match(/^(?:◀️ صفحه (\d+)|صفحه (\d+) ▶️)$/);
+  if (pageNav) return showCases(env, chatId, player, Number(pageNav[1] || pageNav[2]));
   if (text === "🎯 مأموریت امروز") return daily(env, chatId, player);
   if (text === "🏅 دستاوردها") return achievements(env, chatId, player);
   if (text === "🎒 کوله‌باز") return inventory(env, chatId, player);
@@ -400,7 +485,7 @@ async function handleMessage(env, message) {
       try {
         const awarded = await awardCaseScore(env, message.from.id, player.id, activeCase.id);
         if (!awarded) return sendMenu(env, chatId, "✅ این پرونده قبلاً حل شده.\n\nبریم سراغ پرونده بعدی؟ 😎", "🏆");
-        await unlockAchievements(env, player.id);
+            await unlockAchievements(env, player.id);
         const nextId = getUnlockedCaseId(CASES, new Set([...(await env.DB.prepare("SELECT case_id FROM player_progress WHERE player_id=? AND solved=1").bind(player.id).all()).results.map(r => r.case_id)]));
         const nextCase = getCase(nextId);
         const nextText = nextCase ? `\n\n➡️ پرونده بعدی: ${nextCase.title}\nاز «پرونده قابل انجام» ادامه بده.` : "\n\n👑 تو هر ۶۰ پرونده رو پشت سر گذاشتی!";
