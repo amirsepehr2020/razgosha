@@ -116,16 +116,44 @@ async function daily(env, chatId, player) {
 }
 
 async function awardCaseScore(env, telegramId, playerId, caseId) {
+  const c = getCase(caseId);
+  if (!c) throw new Error(`unknown_case:${caseId}`);
   const rewardToken = createRewardToken();
   const now = new Date().toISOString();
+
+  // The previous implementation used nested SELECT expressions for the reward
+  // update. Keep the reward source server-side, but use plain SQLite parameters
+  // so a correct answer cannot disappear behind a D1 SQL error.
   const result = await env.DB.batch([
-    env.DB.prepare(`INSERT OR IGNORE INTO case_rewards (player_id, case_id, reward_token, awarded_at) SELECT id, ?, ?, ? FROM players p JOIN player_progress pp ON pp.player_id=p.id AND pp.case_id=? WHERE p.telegram_id=? AND pp.solved=0`).bind(caseId, rewardToken, now, caseId, String(telegramId)),
-    env.DB.prepare(`UPDATE players SET score=score+(SELECT reward FROM (SELECT ? AS reward)), level=CAST((score+(SELECT reward FROM (SELECT ? AS reward)))/500 AS INTEGER)+1, updated_at=? WHERE telegram_id=? AND EXISTS(SELECT 1 FROM case_rewards cr WHERE cr.player_id=players.id AND cr.case_id=? AND cr.reward_token=?)`).bind(getCase(caseId).reward, getCase(caseId).reward, now, String(telegramId), caseId, rewardToken),
-    env.DB.prepare(`UPDATE player_progress SET solved=1,current_step=current_step+1,updated_at=? WHERE player_id=? AND case_id=? AND solved=0 AND EXISTS(SELECT 1 FROM case_rewards cr WHERE cr.player_id=player_progress.player_id AND cr.case_id=? AND cr.reward_token=?)`).bind(now, playerId, caseId, caseId, rewardToken)
+    env.DB.prepare(`INSERT OR IGNORE INTO case_rewards (player_id, case_id, reward_token, awarded_at)
+      SELECT id, ?, ?, ? FROM players p
+      JOIN player_progress pp ON pp.player_id=p.id AND pp.case_id=?
+      WHERE p.telegram_id=? AND pp.solved=0`).bind(caseId, rewardToken, now, caseId, String(telegramId)),
+    env.DB.prepare(`UPDATE players
+      SET score = score + ?,
+          level = CAST((score + ?) / 500 AS INTEGER) + 1,
+          updated_at=?
+      WHERE telegram_id=?
+        AND EXISTS (
+          SELECT 1 FROM case_rewards cr
+          WHERE cr.player_id=players.id AND cr.case_id=? AND cr.reward_token=?
+        )`).bind(c.reward, c.reward, now, String(telegramId), caseId, rewardToken),
+    env.DB.prepare(`UPDATE player_progress
+      SET solved=1, current_step=current_step+1, updated_at=?
+      WHERE player_id=? AND case_id=? AND solved=0
+        AND EXISTS (
+          SELECT 1 FROM case_rewards cr
+          WHERE cr.player_id=player_progress.player_id AND cr.case_id=? AND cr.reward_token=?
+        )`).bind(now, playerId, caseId, caseId, rewardToken)
   ]);
-  const changes = result[1]?.meta?.changes || 0;
-  if (!changes) { logEvent("game_duplicate_reward_blocked", { telegram_id: String(telegramId), player_id: playerId, case_id: caseId }); return false; }
-  logEvent("game_reward_awarded", { telegram_id: String(telegramId), player_id: playerId, case_id: caseId, points: getCase(caseId).reward });
+
+  const inserted = result[0]?.meta?.changes || 0;
+  const updated = result[1]?.meta?.changes || 0;
+  if (!inserted || !updated) {
+    logEvent("game_duplicate_reward_blocked", { telegram_id: String(telegramId), player_id: playerId, case_id: caseId, inserted, updated });
+    return false;
+  }
+  logEvent("game_reward_awarded", { telegram_id: String(telegramId), player_id: playerId, case_id: caseId, points: c.reward });
   return true;
 }
 
@@ -164,10 +192,15 @@ async function handleCallback(env, query) {
     const [, caseId, raw] = data.split(":"); const c = getCase(caseId); const index = Number(raw);
     if (!c || !c.options[index]) return sendMenu(env, chatId, "این جواب دیگه معتبر نیست 😅");
     if (index !== c.answer) return telegram(env, "sendMessage", { chat_id: chatId, text: `❌ نه، این یکی با شواهد جور درنمیاد.\n\n${c.question}\n\nیه بار دیگه سرنخ‌ها رو مرور کن؛ عجله نکن کارآگاه 😉`, reply_markup: { inline_keyboard: [[{ text: "🧩 دوباره تلاش می‌کنم", callback_data: `puzzle:${c.id}` }], [{ text: "🔍 دیدن سرنخ‌ها", callback_data: `case:${c.id}` }]] } });
-    const awarded = await awardCaseScore(env, query.from.id, player.id, c.id);
-    await unlockAchievements(env, player.id);
-    if (!awarded) return telegram(env, "sendMessage", { chat_id: chatId, text: "✅ این پرونده رو قبلاً حل کردی و امتیازش هم قبلاً ثبت شده.\n\nبریم سراغ پرونده بعدی؟ 😎", reply_markup: MENU });
-    return telegram(env, "sendMessage", { chat_id: chatId, text: `${c.success}\n\n💰 +${c.reward} امتیاز\n\n📁 پرونده ثبت شد. پرونده بعدی باز شد 🔓`, reply_markup: { inline_keyboard: [[{ text: "📁 پرونده بعدی", callback_data: "menu:cases" }], [{ text: "👤 پروفایل", callback_data: "menu:profile" }, { text: "🏆 رتبه‌بندی", callback_data: "menu:rank" }]] } });
+    try {
+      const awarded = await awardCaseScore(env, query.from.id, player.id, c.id);
+      if (!awarded) return telegram(env, "sendMessage", { chat_id: chatId, text: "✅ این پرونده رو قبلاً حل کردی و امتیازش هم قبلاً ثبت شده.\n\nبریم سراغ پرونده بعدی؟ 😎", reply_markup: MENU });
+      await unlockAchievements(env, player.id);
+      return telegram(env, "sendMessage", { chat_id: chatId, text: `${c.success}\n\n💰 +${c.reward} امتیاز\n\n📁 پرونده ثبت شد. پرونده بعدی باز شد 🔓`, reply_markup: { inline_keyboard: [[{ text: "📁 پرونده بعدی", callback_data: "menu:cases" }], [{ text: "👤 پروفایل", callback_data: "menu:profile" }, { text: "🏆 رتبه‌بندی", callback_data: "menu:rank" }]] } });
+    } catch (error) {
+      logEvent("game_answer_error", { telegram_id: String(query.from.id), player_id: player.id, case_id: c.id, message: error?.message || "unknown" });
+      return telegram(env, "sendMessage", { chat_id: chatId, text: "⚠️ جواب درست بود، ولی ثبت پرونده با مشکل روبه‌رو شد.\n\nامتیازت بدون ثبت ناقص نمی‌مونه؛ چند لحظه بعد دوباره همین گزینه رو بزن. 👀" });
+    }
   }
   return sendMenu(env, chatId, "این دکمه دیگه کاربردی نداره 😅");
 }
@@ -176,7 +209,7 @@ async function handleMessage(env, message) {
   const chatId = message.chat.id;
   if (message.text === "/start") {
     const player = await createAccount(env, message.from);
-    return sendMenu(env, chatId, `🕵️ سلام ${esc(player.detective_name || player.first_name)}!\n\nحساب کارآگاهی‌ات ساخته شد و از اینجا به بعد همه‌چی برای خودته.\n\n۱۰ پرونده منتظرته؛ بریم ببینیم چندتاشو می‌تونی حل کنی 😎🔥`);
+    return sendMenu(env, chatId, `🕵️ سلام ${esc(player.detective_name || player.first_name)}!\n\nحساب کارآگاهی‌ات ساخته شد و از اینجا به بعد همه‌چی برای خودته.\n\n۱۰ پرونده منتظرتـه؛ بریم ببینیم چندتاشو می‌تونی حل کنی 😎🔥`);
   }
   const player = await requireAccount(env, chatId, message.from.id);
   if (!player) return;
@@ -197,7 +230,6 @@ export default { async fetch(request, env) {
     return new Response("ok", { status: 200 });
   } catch (error) {
     logEvent("worker_error", { message: error?.message || "unknown" });
-    try { const chatId = error?.chatId; if (chatId) await telegram(env, "sendMessage", { chat_id: chatId, text: getSafeErrorMessage(error) }); } catch {}
     return new Response("ok", { status: 200 });
   }
 } };
