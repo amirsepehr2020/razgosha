@@ -15,8 +15,6 @@ jobs:
       - uses: actions/checkout@v4
       - name: Restore 60-case catalog
         run: python scripts/fix_case_catalog.py
-      - name: Apply gameplay UX integration
-        run: python scripts/integrate_gameplay_ux.py
       - name: Harden gameplay UX
         run: python scripts/fix_gameplay_ux_after_integration.py
       - name: Validate
