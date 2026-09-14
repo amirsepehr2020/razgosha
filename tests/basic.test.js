@@ -41,6 +41,21 @@ test("bot supports typing indicators and safe message reactions", () => {
   assert.match(source, /reaction_error/);
 });
 
+test("help section has dedicated topic buttons and creator identity", () => {
+  const source = fs.readFileSync("src/index.js", "utf8");
+  assert.match(source, /HELP_LABEL/);
+  assert.match(source, /نحوه بازی/);
+  assert.match(source, /قوانین رازگشا/);
+  assert.match(source, /امتیاز و رتبه‌بندی/);
+  assert.match(source, /دستاوردها/);
+  assert.match(source, /آیتم‌ها و کوله‌باز/);
+  assert.match(source, /مأموریت روزانه/);
+  assert.match(source, /حساب کاربری/);
+  assert.match(source, /نکات کارآگاهی/);
+  assert.match(source, /درباره رازگشا/);
+  assert.match(source, /am_sepehr_s/);
+});
+
 test("D1 migrations contain required game tables", () => {
   const initial = fs.readFileSync("migrations/0001_initial.sql", "utf8");
   const rewards = fs.readFileSync("migrations/0002_case_rewards.sql", "utf8");
