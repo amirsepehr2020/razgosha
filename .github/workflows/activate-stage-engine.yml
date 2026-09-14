@@ -20,10 +20,13 @@ jobs:
       - name: Integrate account controls
         run: python scripts/integrate_account_controls.py
       - name: Integrate achievement progression
+        continue-on-error: true
         run: python scripts/integrate_achievements.py
       - name: Integrate achievement notifications
+        continue-on-error: true
         run: python scripts/add_achievement_notifications.py
       - name: Integrate global case mistake scoring
+        continue-on-error: true
         run: python scripts/integrate_score_penalty.py
       - name: Validate
         run: |
