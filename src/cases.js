@@ -1,3 +1,5 @@
+import { ADVANCED_CASES } from "./advanced-cases.js";
+
 export const CASES = [
   {
     id: "case-001", title: "پرونده ۰۰۱ — آخرین قطار", difficulty: "آسان", reward: 100,
@@ -88,7 +90,8 @@ export const CASES = [
     question: "قوی‌ترین نقطه خط زمانی کجاست؟",
     options: ["۱۵:۰۳", "۱۵:۰۵", "۱۵:۰۷", "۱۵:۱۰"], answer: 2,
     success: "پرونده قرمز رو باز کردی، کارآگاه! نقطه کلیدی همون ۳۰ ثانیه قطعی دوربینه. 🕵️‍♂️🔥"
-  }
+  },
+  ...ADVANCED_CASES
 ];
 
 export function getCase(id) { return CASES.find(c => c.id === id); }
