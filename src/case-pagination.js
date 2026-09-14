@@ -13,6 +13,6 @@ export function getCasePage(cases, page = 1) {
 
 export function getUnlockedCaseId(cases, solvedIds) {
   const solved = solvedIds instanceof Set ? solvedIds : new Set(solvedIds || []);
-  const index = cases.findIndex((c, i) => i === 0 || solved.has(cases[i - 1]?.id));
+  const index = cases.findIndex((c, i) => !solved.has(c.id) && (i === 0 || solved.has(cases[i - 1]?.id)));
   return index >= 0 ? cases[index]?.id || null : null;
 }
