@@ -19,18 +19,6 @@ jobs:
         run: python scripts/fix_gameplay_ux_after_integration.py
       - name: Integrate achievement progression
         run: python scripts/integrate_achievements.py
-      - name: Repair generated achievement branch
-        run: |
-          python - <<'PY'
-          from pathlib import Path
-          path = Path("src/index.js")
-          source = path.read_text(encoding="utf-8")
-          marker = 'puzzleKeyboard(finalCase), 850, "🤔");\n          try {'
-          replacement = 'puzzleKeyboard(finalCase), 850, "🤔");\n        }\n          try {'
-          if marker in source:
-              source = source.replace(marker, replacement, 1)
-              path.write_text(source, encoding="utf-8")
-          PY
       - name: Validate
         run: |
           node --check src/index.js
