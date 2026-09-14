@@ -32,6 +32,15 @@ test("bot uses reply keyboards instead of inline keyboards", () => {
   assert.doesNotMatch(source, /callback_data/);
 });
 
+test("bot supports typing indicators and safe message reactions", () => {
+  const source = fs.readFileSync("src/index.js", "utf8");
+  assert.match(source, /sendChatAction/);
+  assert.match(source, /action:\s*["']typing["']/);
+  assert.match(source, /setMessageReaction/);
+  assert.match(source, /type:\s*["']emoji["']/);
+  assert.match(source, /reaction_error/);
+});
+
 test("D1 migrations contain required game tables", () => {
   const initial = fs.readFileSync("migrations/0001_initial.sql", "utf8");
   const rewards = fs.readFileSync("migrations/0002_case_rewards.sql", "utf8");
