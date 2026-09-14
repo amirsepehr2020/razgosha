@@ -23,9 +23,12 @@ jobs:
         run: python scripts/add_achievement_notifications.py
       - name: Integrate global case mistake scoring
         run: python scripts/integrate_score_penalty.py
+      - name: Integrate account controls
+        run: python scripts/integrate_account_controls.py
       - name: Validate
         run: |
           node --check src/index.js
+          node --check src/account-controls.js
           node --check src/case-pagination.js
           node --check src/stage-engine.js
           node --check src/cases.js
