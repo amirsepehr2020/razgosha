@@ -4,7 +4,7 @@ import { CASES, getCase } from "./cases.js";
 const MENU = { inline_keyboard: [
   [{ text: "🔎 پرونده‌ها", callback_data: "menu:cases" }, { text: "🎯 مأموریت امروز", callback_data: "menu:daily" }],
   [{ text: "👤 پروفایل", callback_data: "menu:profile" }, { text: "🏆 رتبه‌بندی", callback_data: "menu:rank" }],
-  [{ text: "🏅 دستاوردها", callback_data: "menu:achievements" }, { text: "🎒 کوله‌پشتی", callback_data: "menu:inventory" }],
+  [{ text: "🏅 دستاوردها", callback_data: "menu:achievements" }, { text: "🎒 کوله‌باز", callback_data: "menu:inventory" }],
   [{ text: "ℹ️ راهنما", callback_data: "menu:help" }]
 ] };
 
@@ -83,7 +83,7 @@ async function startCase(env, chatId, player, caseId) {
 
 async function profile(env, chatId, player) {
   const stats = await env.DB.prepare("SELECT COUNT(*) AS total, SUM(solved) AS solved FROM player_progress WHERE player_id = ?").bind(player.id).first();
-  return telegram(env, "sendMessage", { chat_id: chatId, text: `👤 پروفایل کارآگاه\n\n🪪 اسم: ${esc(player.detective_name || player.first_name || "کارآگاه")}\n🏆 امتیاز: ${player.score}\n⭐ سطح: ${player.level}\n📁 پرونده‌های حل‌شده: ${stats.solved || 0}\n🔥 استریک روزانه: ${player.streak || 0}\n\nآروم‌آروم بیا بالا؛ رتبه‌ها منتظرتن 😎`, reply_markup: { inline_keyboard: [[{ text: "✏️ تغییر اسم کارآگاهی", callback_data: "profile:name" }], [{ text: "🏠 منو", callback_data: "menu:home" }]] } });
+  return telegram(env, "sendMessage", { chat_id: chatId, text: `👤 پروفایل کارآگاه\n\n🪪 اسم: ${esc(player.detective_name || player.first_name || "کارآگاه")}\n🏆 امتیاز: ${player.score}\n⭐ سطح: ${player.level}\n📁 پرونده‌های حل‌شده: ${stats.solved || 0}\n🔥 استریک روزانه: ${player.streak || 0}\n\nآروم‌آروم بیا بالا؛ رتبه‌ها منتظرتن 😎`, reply_markup: { inline_keyboard: [[{ text: "🏠 منو", callback_data: "menu:home" }]] } });
 }
 
 async function rank(env, chatId, player) {
@@ -121,36 +121,38 @@ async function awardCaseScore(env, telegramId, playerId, caseId) {
   const rewardToken = createRewardToken();
   const now = new Date().toISOString();
 
-  // The previous implementation used nested SELECT expressions for the reward
-  // update. Keep the reward source server-side, but use plain SQLite parameters
-  // so a correct answer cannot disappear behind a D1 SQL error.
+  // Keep the whole reward operation atomic. Use the trusted playerId already
+  // resolved from the active account, avoiding an extra player lookup/join.
   const result = await env.DB.batch([
     env.DB.prepare(`INSERT OR IGNORE INTO case_rewards (player_id, case_id, reward_token, awarded_at)
-      SELECT id, ?, ?, ? FROM players p
-      JOIN player_progress pp ON pp.player_id=p.id AND pp.case_id=?
-      WHERE p.telegram_id=? AND pp.solved=0`).bind(caseId, rewardToken, now, caseId, String(telegramId)),
+      SELECT ?, ?, ?, ?
+      WHERE EXISTS (
+        SELECT 1 FROM player_progress
+        WHERE player_id=? AND case_id=? AND solved=0
+      )`).bind(playerId, caseId, rewardToken, now, playerId, caseId),
     env.DB.prepare(`UPDATE players
       SET score = score + ?,
           level = CAST((score + ?) / 500 AS INTEGER) + 1,
           updated_at=?
-      WHERE telegram_id=?
+      WHERE id=?
         AND EXISTS (
-          SELECT 1 FROM case_rewards cr
-          WHERE cr.player_id=players.id AND cr.case_id=? AND cr.reward_token=?
-        )`).bind(c.reward, c.reward, now, String(telegramId), caseId, rewardToken),
+          SELECT 1 FROM case_rewards
+          WHERE player_id=? AND case_id=? AND reward_token=?
+        )`).bind(c.reward, c.reward, now, playerId, playerId, caseId, rewardToken),
     env.DB.prepare(`UPDATE player_progress
       SET solved=1, current_step=current_step+1, updated_at=?
       WHERE player_id=? AND case_id=? AND solved=0
         AND EXISTS (
-          SELECT 1 FROM case_rewards cr
-          WHERE cr.player_id=player_progress.player_id AND cr.case_id=? AND cr.reward_token=?
-        )`).bind(now, playerId, caseId, caseId, rewardToken)
+          SELECT 1 FROM case_rewards
+          WHERE player_id=? AND case_id=? AND reward_token=?
+        )`).bind(now, playerId, caseId, playerId, caseId, rewardToken)
   ]);
 
-  const inserted = result[0]?.meta?.changes || 0;
-  const updated = result[1]?.meta?.changes || 0;
-  if (!inserted || !updated) {
-    logEvent("game_duplicate_reward_blocked", { telegram_id: String(telegramId), player_id: playerId, case_id: caseId, inserted, updated });
+  const inserted = Number(result[0]?.meta?.changes || 0);
+  const updated = Number(result[1]?.meta?.changes || 0);
+  const progressUpdated = Number(result[2]?.meta?.changes || 0);
+  if (!inserted || !updated || !progressUpdated) {
+    logEvent("game_reward_not_recorded", { telegram_id: String(telegramId), player_id: playerId, case_id: caseId, inserted, updated, progressUpdated });
     return false;
   }
   logEvent("game_reward_awarded", { telegram_id: String(telegramId), player_id: playerId, case_id: caseId, points: c.reward });
@@ -195,12 +197,20 @@ async function handleCallback(env, query) {
     try {
       const awarded = await awardCaseScore(env, query.from.id, player.id, c.id);
       if (!awarded) return telegram(env, "sendMessage", { chat_id: chatId, text: "✅ این پرونده رو قبلاً حل کردی و امتیازش هم قبلاً ثبت شده.\n\nبریم سراغ پرونده بعدی؟ 😎", reply_markup: MENU });
-      await unlockAchievements(env, player.id);
-      return telegram(env, "sendMessage", { chat_id: chatId, text: `${c.success}\n\n💰 +${c.reward} امتیاز\n\n📁 پرونده ثبت شد. پرونده بعدی باز شد 🔓`, reply_markup: { inline_keyboard: [[{ text: "📁 پرونده بعدی", callback_data: "menu:cases" }], [{ text: "👤 پروفایل", callback_data: "menu:profile" }, { text: "🏆 رتبه‌بندی", callback_data: "menu:rank" }]] } });
     } catch (error) {
       logEvent("game_answer_error", { telegram_id: String(query.from.id), player_id: player.id, case_id: c.id, message: error?.message || "unknown" });
-      return telegram(env, "sendMessage", { chat_id: chatId, text: "⚠️ جواب درست بود، ولی ثبت پرونده با مشکل روبه‌رو شد.\n\nامتیازت بدون ثبت ناقص نمی‌مونه؛ چند لحظه بعد دوباره همین گزینه رو بزن. 👀" });
+      return telegram(env, "sendMessage", { chat_id: chatId, text: "⚠️ جواب درست بود، اما ثبت امتیاز با خطای موقت روبه‌رو شد. چند لحظه بعد دوباره همین گزینه رو بزن. 👀" });
     }
+
+    // Achievement failure must never turn a successfully awarded case into a
+    // misleading error message. It is best-effort and can be retried later.
+    try {
+      await unlockAchievements(env, player.id);
+    } catch (error) {
+      logEvent("achievement_unlock_error", { telegram_id: String(query.from.id), player_id: player.id, case_id: c.id, message: error?.message || "unknown" });
+    }
+
+    return telegram(env, "sendMessage", { chat_id: chatId, text: `${c.success}\n\n💰 +${c.reward} امتیاز\n\n📁 پرونده ثبت شد. پرونده بعدی باز شد 🔓`, reply_markup: { inline_keyboard: [[{ text: "📁 پرونده بعدی", callback_data: "menu:cases" }], [{ text: "👤 پروفایل", callback_data: "menu:profile" }, { text: "🏆 رتبه‌بندی", callback_data: "menu:rank" }]] } });
   }
   return sendMenu(env, chatId, "این دکمه دیگه کاربردی نداره 😅");
 }
