@@ -2,6 +2,7 @@ import { createRewardToken, getSafeErrorMessage } from "./game-guards.js";
 import { CASES, getCase } from "./cases.js";
 import { getStage, getStageClues, getStageCount, isFinalStage } from "./stage-engine.js";
 import { getCasePage, getUnlockedCaseId } from "./case-pagination.js";
+import { calculateCaseScore, getMistakeWarning, recordCaseMistake } from "./score-penalty.js";
 
 const MENU = {
   keyboard: [
@@ -56,8 +57,8 @@ const HELP_TOPICS = [
 
 const HELP_CONTENT = {
   "how-to": `🎮 نحوه بازی\n\n🔎 از بخش «پرونده‌ها» یک پرونده باز رو انتخاب کن.\n\n🔍 سرنخ‌ها رو یکی‌یکی بررسی کن و جزئیات رو کنار هم بذار.\n\n🧩 وقتی آماده شدی، برو سراغ معما و یکی از چهار گزینه رو انتخاب کن.\n\n🏆 جواب درست یعنی پرونده حل شده و امتیازش ثبت می‌شه.\n\n🔓 پرونده‌ها به‌ترتیب باز می‌شن؛ پس هر پرونده بخشی از مسیرته.`,
-  rules: `📜 قوانین رازگشا\n\n1️⃣ هر پرونده رو با دقت بررسی کن.\n2️⃣ قبل از جواب دادن، همه سرنخ‌ها رو بخون.\n3️⃣ حدس تصادفی راه خوبی برای حل پرونده نیست.\n4️⃣ هر پرونده فقط یک‌بار امتیاز اصلی خودش رو می‌ده.\n5️⃣ پرونده‌ها به‌ترتیب باز می‌شن.\n6️⃣ تقلب، سوءاستفاده یا تلاش برای خراب کردن سیستم ممنوعه.\n\n🕵️ اینجا قرار نیست فقط حدس بزنی؛ باید استدلال کنی.`,
-  score: `🏆 امتیاز و رتبه‌بندی\n\n💰 هر پرونده برای حل درست، امتیاز خودش رو داره.\n\n⭐ با افزایش امتیاز، سطح کارآگاهت هم بالاتر می‌ره.\n\n🏆 بخش «رتبه‌بندی» بهترین کارآگاه‌ها رو نشون می‌ده.\n\n🎯 مأموریت روزانه هم می‌تونه به امتیازت اضافه کنه.\n\n🔥 هدف فقط حل کردن نیست؛ حرفه‌ای‌تر حل کن و بالاتر برو.`,
+  rules: `📜 قوانین رازگشا\n\n1️⃣ هر پرونده رو با دقت بررسی کن.\n2️⃣ قبل از جواب دادن، همه سرنخ‌ها رو بخون.\n3️⃣ حدس تصادفی راه خوبی برای حل پرونده نیست.\n4️⃣ هر پرونده فقط یک‌بار امتیاز اصلی خودش رو می‌ده.\n5️⃣ هر پاسخ اشتباه امتیاز همین پرونده رو کاهش می‌ده: ۵۰٪، بعد ۲۵٪، و بعد صفر.\n6️⃣ پرونده‌ها به‌ترتیب باز می‌شن.\n6️⃣ تقلب، سوءاستفاده یا تلاش برای خراب کردن سیستم ممنوعه.\n\n🕵️ اینجا قرار نیست فقط حدس بزنی؛ باید استدلال کنی.`,
+  score: `🏆 امتیاز و رتبه‌بندی\n\n💰 هر پرونده برای حل درست، امتیاز خودش رو داره.\n\n⭐ با افزایش امتیاز، سطح کارآگاهت هم بالاتر می‌ره.\n\n🏆 بخش «رتبه‌بندی» بهترین کارآگاه‌ها رو نشون می‌ده.\n\n🎯 مأموریت روزانه هم می‌تونه به امتیازت اضافه کنه.\n\n⚠️ پاسخ اشتباه امتیاز پرونده رو کم می‌کنه: ۱ اشتباه = نصف، ۲ اشتباه = یک‌چهارم، ۳ اشتباه = صفر.\n\n🔥 هدف فقط حل کردن نیست؛ حرفه‌ای‌تر حل کن و بالاتر برو.`,
   achievements: `🏅 دستاوردها
 
 مسیر کارآگاهیت اینجاست.
@@ -252,19 +253,20 @@ async function startCase(env, chatId, player, caseId) {
   const solved = new Set(rows.results.filter(r => r.solved).map(r => r.case_id));
   const idx = CASES.findIndex(x => x.id === caseId);
   if (idx > 0 && !solved.has(CASES[idx - 1].id)) return sendMenu(env, chatId, "🔒 این پرونده هنوز باز نیست. اول پرونده بعدیِ مسیرت رو حل کن 😉", "🔒");
-  const existing = await env.DB.prepare("SELECT current_step, solved FROM player_progress WHERE player_id=? AND case_id=?").bind(player.id, c.id).first();
+  const existing = await env.DB.prepare("SELECT current_step, solved, wrong_guesses FROM player_progress WHERE player_id=? AND case_id=?").bind(player.id, c.id).first();
   if (!existing || existing.solved) {
-    await env.DB.prepare(`INSERT INTO player_progress (player_id, case_id, current_step, solved, updated_at) VALUES (?, ?, 0, 0, ?) ON CONFLICT(player_id, case_id) DO UPDATE SET current_step=0, solved=0, updated_at=excluded.updated_at`).bind(player.id, c.id, new Date().toISOString()).run();
+    await env.DB.prepare(`INSERT INTO player_progress (player_id, case_id, current_step, solved, wrong_guesses, updated_at) VALUES (?, ?, 0, 0, 0, ?) ON CONFLICT(player_id, case_id) DO UPDATE SET current_step=0, solved=0, wrong_guesses=0, updated_at=excluded.updated_at`).bind(player.id, c.id, new Date().toISOString()).run();
   }
   const step = existing && !existing.solved ? Number(existing.current_step || 0) : 0;
   const stage = getStage(c, step);
-  return sendMessage(env, chatId, `📂 ${c.title}\n\n${c.intro}\n\n👥 مظنون‌ها:\n${c.suspects.map((x, i) => `${i + 1}. ${x}`).join("\n")}\n\n🧩 مرحله ${step + 1}/${getStageCount(c)} — ${stage?.title || "بررسی شواهد"}\n\nسرنخ‌ها رو با دقت بررسی کن؛ عجله نکن 👀`, caseKeyboard(c, step), 1100, "🕵️");
+  const activeWarning = isFinalStage(c, step) ? `\n\n${getMistakeWarning(Number(existing?.wrong_guesses || 0))}` : "";
+  return sendMessage(env, chatId, `📂 ${c.title}\n\n${c.intro}\n\n👥 مظنون‌ها:\n${c.suspects.map((x, i) => `${i + 1}. ${x}`).join("\n")}\n\n🧩 مرحله ${step + 1}/${getStageCount(c)} — ${stage?.title || "بررسی شواهد"}\n\nسرنخ‌ها رو با دقت بررسی کن؛ عجله نکن 👀${activeWarning}`, caseKeyboard(c, step), 1100, "🕵️");
 }
 async function getActiveCase(env, playerId) {
-  const row = await env.DB.prepare("SELECT case_id, current_step FROM player_progress WHERE player_id=? AND solved=0 ORDER BY updated_at DESC, id DESC LIMIT 1").bind(playerId).first();
+  const row = await env.DB.prepare("SELECT case_id, current_step, wrong_guesses FROM player_progress WHERE player_id=? AND solved=0 ORDER BY updated_at DESC, id DESC LIMIT 1").bind(playerId).first();
   if (!row) return null;
   const c = getCase(row.case_id);
-  return c ? { ...c, current_step: Number(row.current_step || 0) } : null;
+  return c ? { ...c, current_step: Number(row.current_step || 0), wrong_guesses: Number(row.wrong_guesses || 0) } : null;
 }
 async function profile(env, chatId, player) {
   const stats = await env.DB.prepare("SELECT COUNT(*) AS total, SUM(solved) AS solved FROM player_progress WHERE player_id = ?").bind(player.id).first();
@@ -339,12 +341,14 @@ async function showHelpTopic(env, chatId, topicId) {
 async function awardCaseScore(env, telegramId, playerId, caseId) {
   const c = getCase(caseId);
   if (!c) throw new Error(`unknown_case:${caseId}`);
+  const progress = await env.DB.prepare("SELECT wrong_guesses FROM player_progress WHERE player_id=? AND case_id=? AND solved=0").bind(playerId, caseId).first();
+  const points = calculateCaseScore(c.reward, progress?.wrong_guesses || 0);
   const rewardToken = createRewardToken();
   const now = new Date().toISOString();
   const result = await env.DB.batch([
     env.DB.prepare(`INSERT OR IGNORE INTO case_rewards (player_id, case_id, reward_token, awarded_at)
       SELECT ?, ?, ?, ? WHERE EXISTS (SELECT 1 FROM player_progress WHERE player_id=? AND case_id=? AND solved=0)`).bind(playerId, caseId, rewardToken, now, playerId, caseId),
-    env.DB.prepare(`UPDATE players SET score=score+?, level=CAST((score+?)/500 AS INTEGER)+1, updated_at=? WHERE id=? AND EXISTS (SELECT 1 FROM case_rewards WHERE player_id=? AND case_id=? AND reward_token=?)`).bind(c.reward, c.reward, now, playerId, playerId, caseId, rewardToken),
+    env.DB.prepare(`UPDATE players SET score=score+?, level=CAST((score+?)/500 AS INTEGER)+1, updated_at=? WHERE id=? AND EXISTS (SELECT 1 FROM case_rewards WHERE player_id=? AND case_id=? AND reward_token=?)`).bind(points, points, now, playerId, playerId, caseId, rewardToken),
     env.DB.prepare(`UPDATE player_progress SET solved=1, current_step=current_step+1, updated_at=? WHERE player_id=? AND case_id=? AND solved=0 AND EXISTS (SELECT 1 FROM case_rewards WHERE player_id=? AND case_id=? AND reward_token=?)`).bind(now, playerId, caseId, playerId, caseId, rewardToken)
   ]);
   const inserted = Number(result[0]?.meta?.changes || 0);
@@ -354,8 +358,8 @@ async function awardCaseScore(env, telegramId, playerId, caseId) {
     logEvent("game_reward_not_recorded", { telegram_id: String(telegramId), player_id: playerId, case_id: caseId, inserted, updated, progressUpdated });
     return false;
   }
-  logEvent("game_reward_awarded", { telegram_id: String(telegramId), player_id: playerId, case_id: caseId, points: c.reward });
-  return true;
+  logEvent("game_reward_awarded", { telegram_id: String(telegramId), player_id: playerId, case_id: caseId, points, base_points: c.reward, wrong_guesses: Number(progress?.wrong_guesses || 0) });
+  return { awarded: true, points };
 }
 
 async function unlockAchievements(env, playerId) {
@@ -408,6 +412,28 @@ async function unlockAchievements(env, playerId) {
   }
   return newlyUnlocked;
 }
+async function notifyNewAchievements(env, chatId, achievementIds) {
+  if (!Array.isArray(achievementIds) || achievementIds.length === 0) return;
+  const names = new Map(ACHIEVEMENTS.map(([id, name]) => [id, name]));
+  const lines = achievementIds
+    .map(id => names.get(id))
+    .filter(Boolean)
+    .map(name => `🏅 ${name}`);
+  if (!lines.length) return;
+  try {
+    await sendMessage(
+      env,
+      chatId,
+      `🎉 دستاورد جدید!\n\n${lines.join("\n")}\n\nآفرین کارآگاه! این نشان برای همیشه توی پروفایلت ثبت شد 🔥`,
+      MENU,
+      350,
+      "🏅"
+    );
+  } catch (error) {
+    logEvent("achievement_notification_error", { chat_id: chatId, achievement_ids: achievementIds, message: error?.message || "unknown" });
+  }
+}
+
 function caseFromButton(text) {
   const match = String(text || "").match(/^📁 (\d{3}) —/);
   return match ? `case-${match[1]}` : null;
@@ -470,26 +496,34 @@ async function handleMessage(env, message) {
       const nextStep = activeCase.current_step + 1;
       await env.DB.prepare("UPDATE player_progress SET current_step=?, updated_at=? WHERE player_id=? AND case_id=? AND solved=0").bind(nextStep, new Date().toISOString(), player.id, activeCase.id).run();
       const nextStage = getStage(activeCase, nextStep);
-      if (isFinalStage(activeCase, nextStep)) return sendMessage(env, chatId, `🧩 مرحله نهایی\n\n${nextStage.question}\n\nحالا همه شواهد رو کنار هم بذار.`, puzzleKeyboard(nextStage), 1000, "🧩");
+      if (isFinalStage(activeCase, nextStep)) return sendMessage(env, chatId, `🧩 مرحله نهایی\n\n${nextStage.question}\n\nحالا همه شواهد رو کنار هم بذار.\n\n${getMistakeWarning(activeCase.wrong_guesses)}`, puzzleKeyboard(nextStage), 1000, "🧩");
       return sendMessage(env, chatId, `🕵️ مرحله ${nextStep + 1}/${getStageCount(activeCase)} — ${nextStage.title}\n\nسرنخ‌های جدید رو بررسی کن.`, caseKeyboard(activeCase, nextStep), 900, "➡️");
     }
     if (text === PUZZLE_LABEL && isFinalStage(activeCase, activeCase.current_step)) {
-      return sendMessage(env, chatId, `🧩 خب... رسیدیم به اصل ماجرا!\n\n${stage.question}\n\nفقط یکی از این جواب‌ها با شواهد جور درمیاد.`, puzzleKeyboard(stage), 950, "🧩");
+      return sendMessage(env, chatId, `🧩 خب... رسیدیم به اصل ماجرا!\n\n${stage.question}\n\n${getMistakeWarning(activeCase.wrong_guesses)}\n\nفقط یکی از این جواب‌ها با شواهد جور درمیاد.`, puzzleKeyboard(stage), 950, "🧩");
     }
     if (text === "🔍 دیدن سرنخ‌ها") return startCase(env, chatId, player, activeCase.id);
 
     const finalCase = { ...activeCase, question: stage.question || activeCase.question, options: stage.options || activeCase.options, answer: stage.answer ?? activeCase.answer };
     const index = answerIndex(finalCase, text);
     if (index >= 0) {
-      if (index !== finalCase.answer) return sendMessage(env, chatId, `❌ نه، این یکی با شواهد جور درنمیاد.\n\n${finalCase.question}\n\nیه بار دیگه همه شواهد رو مرور کن؛ عجله نکن کارآگاه 😉`, puzzleKeyboard(finalCase), 850, "🤔");
+      if (index !== finalCase.answer) {
+        const mistake = await recordCaseMistake(env, player.id, activeCase.id);
+        const warning = getMistakeWarning(mistake.wrongGuesses);
+        const penaltyText = mistake.wrongGuesses >= 3
+          ? "💥 امتیاز این پرونده دیگه صفره."
+          : `📉 ضریب امتیاز این پرونده: ${Math.round((1 / (2 ** mistake.wrongGuesses)) * 100)}٪`;
+        return sendMessage(env, chatId, `❌ نه، این یکی با شواهد جور درنمیاد.\n\n${penaltyText}\n\n${warning}\n\n${finalCase.question}\n\nدوباره شواهد رو مرور کن؛ این بار با دقت‌تر کارآگاه 😉`, puzzleKeyboard(finalCase), 850, "🤔");
+      }
       try {
         const awarded = await awardCaseScore(env, message.from.id, player.id, activeCase.id);
         if (!awarded) return sendMenu(env, chatId, "✅ این پرونده قبلاً حل شده.\n\nبریم سراغ پرونده بعدی؟ 😎", "🏆");
-            await unlockAchievements(env, player.id);
+            const newlyUnlocked = await unlockAchievements(env, player.id);
+            await notifyNewAchievements(env, chatId, newlyUnlocked);
         const nextId = getUnlockedCaseId(CASES, new Set([...(await env.DB.prepare("SELECT case_id FROM player_progress WHERE player_id=? AND solved=1").bind(player.id).all()).results.map(r => r.case_id)]));
         const nextCase = getCase(nextId);
         const nextText = nextCase ? `\n\n➡️ پرونده بعدی: ${nextCase.title}\nاز «پرونده قابل انجام» ادامه بده.` : "\n\n👑 تو هر ۶۰ پرونده رو پشت سر گذاشتی!";
-        return sendMenu(env, chatId, `${activeCase.success}\n\n💰 +${activeCase.reward} امتیاز\n\n📁 پرونده ثبت شد.${nextText}`, "🎉");
+        return sendMenu(env, chatId, `${activeCase.success}\n\n💰 +${awarded.points} امتیاز\n\n📁 پرونده ثبت شد.${nextText}`, "🎉");
       } catch (error) {
         logEvent("game_answer_error", { telegram_id: String(message.from.id), player_id: player.id, case_id: activeCase.id, message: error?.message || "unknown" });
         return sendMessage(env, chatId, "⚠️ جواب درست بود، ولی ثبت پرونده با مشکل روبه‌رو شد.\n\nچند لحظه بعد دوباره همین گزینه رو بزن. 👀", puzzleKeyboard(finalCase), 700, "⚠️");
