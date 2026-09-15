@@ -23,6 +23,9 @@ jobs:
         with:
           node-version: 22
 
+      - name: Integrate start experience
+        run: node scripts/integrate-start-experience.mjs
+
       - name: Integrate paid hints
         run: node scripts/integrate-paid-hints.mjs
 
@@ -32,12 +35,14 @@ jobs:
       - name: Validate
         run: |
           node --check src/index.js
+          node --check src/start-experience.js
           node --check src/case-pagination.js
           node --check src/stage-engine.js
           node --check src/cases.js
           node --check src/score-penalty.js
           node --check src/paid-hints.js
           node --check src/leaderboard.js
+          node --check scripts/integrate-start-experience.mjs
           node --check scripts/integrate-paid-hints.mjs
           node --check scripts/integrate-leaderboard.mjs
           npm test
