@@ -7,6 +7,7 @@ import { getPaidHints, getPaidHintCost } from "./paid-hints.js";
 import { LEADERBOARD_TYPES, rankLeaderboard } from "./leaderboard.js";
 import { getStartExperience, FEATURED_CASES_LABEL } from "./start-experience.js";
 import { buildAccountControls } from "./account-controls.js";
+import { THEME_MENU_LABEL, getThemeMenuText, sendThemeDocument } from "./themes.js";
 
 const MENU = {
   keyboard: [
@@ -14,6 +15,7 @@ const MENU = {
     [{ text: "🎯 مأموریت امروز" }, { text: "👤 پروفایل" }],
     [{ text: "🏆 رتبه‌بندی" }],
     [{ text: "🏅 دستاوردها" }, { text: "🎒 کوله‌باز" }],
+    [{ text: THEME_MENU_LABEL }],
     [{ text: "ℹ️ راهنما" }]
   ],
   resize_keyboard: true,
@@ -636,7 +638,34 @@ async function handleMessage(env, message) {
   if (text === "🎯 مأموریت امروز") return daily(env, chatId, player);
   if (text === "🏅 دستاوردها") return achievements(env, chatId, player);
   if (text === "🎒 کوله‌باز") return inventory(env, chatId, player);
-  if (text === HELP_LABEL) return showHelp(env, chatId);
+  if (text === THEME_MENU_LABEL) {
+      await telegram(env, "sendMessage", {
+        chat_id: message.chat.id,
+        text: getThemeMenuText(),
+        reply_markup: {
+          keyboard: [
+            [{ text: "📱 دانلود تم موبایل" }],
+            [{ text: "🖥️ دانلود تم دسکتاپ" }],
+            [{ text: BACK }]
+          ],
+          resize_keyboard: true,
+          is_persistent: true
+        }
+      });
+      return;
+    }
+
+    if (text === "📱 دانلود تم موبایل") {
+      await sendThemeDocument(env, message.chat.id, "mobile", "📱 تم Dark Detective Green رازگشا برای موبایل\n\nفایل رو باز کن و در تلگرام اعمالش کن. 🟢🕵️‍♂️");
+      return;
+    }
+
+    if (text === "🖥️ دانلود تم دسکتاپ") {
+      await sendThemeDocument(env, message.chat.id, "desktop", "🖥️ تم Dark Detective Green رازگشا برای دسکتاپ\n\nفایل رو باز کن و در تنظیمات ظاهر تلگرام اعمالش کن. 🟢🕵️‍♂️");
+      return;
+    }
+
+    if (text === HELP_LABEL) return showHelp(env, chatId);
 
   const helpTopic = helpTopicId(text);
   if (helpTopic) return showHelpTopic(env, chatId, helpTopic);
