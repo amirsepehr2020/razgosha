@@ -11,6 +11,8 @@ if (!source.includes('from "./leaderboard.js"')) {
 }
 
 const rankBlock = /async function rank\(env, chatId\) \{[\s\S]*?\n\}\n\nasync function achievements/;
+if (!rankBlock.test(source)) throw new Error("leaderboard rank block not found");
+
 const replacement = `async function leaderboardRows(env) {
   const result = await env.DB.prepare(
     "SELECT p.telegram_id, p.first_name, p.detective_name, p.score, p.streak, p.best_streak, COALESCE(SUM(CASE WHEN pp.solved=1 THEN 1 ELSE 0 END), 0) AS solved, COALESCE(SUM(CASE WHEN pp.solved=1 THEN 0 ELSE pp.wrong_guesses END), 0) AS wrong_guesses FROM players p LEFT JOIN player_progress pp ON pp.player_id=p.id WHERE p.account_status='active' GROUP BY p.id"
@@ -45,10 +47,7 @@ async function rank(env, chatId, player, metric = "score") {
 }
 
 async function achievements`;
-
-if (rankBlock.test(source)) {
-  source = source.replace(rankBlock, replacement);
-}
+source = source.replace(rankBlock, replacement);
 
 const dailyOld = 'await env.DB.prepare("UPDATE players SET score=?, streak=?, last_daily_claim=?, updated_at=? WHERE id=?").bind(newScore, newStreak, today, new Date().toISOString(), player.id).run();';
 const dailyNew = 'await env.DB.prepare("UPDATE players SET score=?, streak=?, best_streak=MAX(best_streak, ?), last_daily_claim=?, updated_at=? WHERE id=?").bind(newScore, newStreak, newStreak, today, new Date().toISOString(), player.id).run();';
@@ -56,18 +55,14 @@ source = source.replace(dailyOld, dailyNew);
 
 if (!source.includes('const LEADERBOARD_METRICS =')) {
   const anchor = 'const PAID_HINT_PREFIX = "💡 خرید سرنخ ";\n';
+  if (!source.includes(anchor)) throw new Error("leaderboard constants anchor not found");
   source = source.replace(anchor, anchor + 'const LEADERBOARD_METRICS = Object.fromEntries(LEADERBOARD_TYPES.map(([id, label]) => [label, id]));\n');
 }
 
 if (!source.includes('LEADERBOARD_METRICS[text]')) {
-  const anchor = 'if (text === "🏆 رتبه‌بندی") return rank(env, chatId, player);';
-  if (source.includes(anchor)) {
-    source = source.replace(anchor, `${anchor}\n  if (LEADERBOARD_METRICS[text]) return rank(env, chatId, player, LEADERBOARD_METRICS[text]);`);
-  } else {
-    const fallback = /if \(text === "👤 پروفایل"\) return profile\(env, chatId, player\);/;
-    if (!fallback.test(source)) throw new Error("leaderboard handler anchor not found");
-    source = source.replace(fallback, `if (LEADERBOARD_METRICS[text]) return rank(env, chatId, player, LEADERBOARD_METRICS[text]);\n  ${fallback.source}`);
-  }
+  const anchor = 'if (text === "/rank" || text === "🏆 رتبه‌بندی") return rank(env, chatId);';
+  if (!source.includes(anchor)) throw new Error("leaderboard handler anchor not found");
+  source = source.replace(anchor, 'if (text === "/rank" || text === "🏆 رتبه‌بندی") return rank(env, chatId, player, "score");\n  if (LEADERBOARD_METRICS[text]) return rank(env, chatId, player, LEADERBOARD_METRICS[text]);');
 }
 
 fs.writeFileSync(path, source);
