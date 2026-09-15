@@ -13,17 +13,37 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Patch next-case handler
+      - name: Patch runtime schema compatibility
         run: |
           python - <<'PY'
           from pathlib import Path
           p = Path('src/index.js')
           s = p.read_text(encoding='utf-8')
-          old = '''  if (text === "🎯 پرونده قابل انجام") {\n    const rows = await env.DB.prepare("SELECT case_id, solved FROM player_progress WHERE player_id = ?").bind(player.id).all();\n    const solvedIds = getSolvedCaseIds(rows.results);\n    const nextId = getUnlockedCaseId(CASES, solvedIds);\n    return nextId ? startCase(env, chatId, player, nextId) : sendMenu(env, chatId, "👑 همه پرونده‌های فعلی رو حل کردی!", "🎉");\n  }'''
-          new = '''  if (text.replace(/[\\u200c\\u200d\\ufe0f]/g, "") === "🎯 پرونده قابل انجام" || text.includes("پرونده قابل انجام")) {\n    try {\n      const rows = await env.DB.prepare("SELECT case_id, solved FROM player_progress WHERE player_id = ?").bind(player.id).all();\n      const solvedIds = getSolvedCaseIds(rows?.results || []);\n      const nextId = getUnlockedCaseId(CASES, solvedIds);\n      logEvent("playable_case_requested", { telegram_id: String(message.from.id), player_id: player.id, next_case_id: nextId || null, solved_count: solvedIds.size });\n      if (!nextId) return sendMenu(env, chatId, "👑 همه پرونده‌های فعلی رو حل کردی!", "🎉");\n      return await startCase(env, chatId, player, nextId);\n    } catch (error) {\n      logEvent("playable_case_error", { telegram_id: String(message.from.id), player_id: player.id, message: error?.message || "unknown" });\n      return sendMessage(env, chatId, "⚠️ پرونده قابل انجام فعلاً نتونست باز بشه. دوباره بزن؛ اگر باز هم نشد، مشکل رو ثبت کردم و می‌تونم دقیق‌تر بررسیش کنم. 🔎", caseListKeyboard(1), 350, "⚠️");\n    }\n  }'''
-          if old not in s:
-              raise SystemExit('target block not found')
-          p.write_text(s.replace(old, new, 1), encoding='utf-8')
+          marker = 'function logEvent(event, details = {}) {'
+          helper = '''let mistakeSchemaReady = false;
+
+async function ensureMistakeSchema(env) {
+  if (mistakeSchemaReady) return;
+  try {
+    await env.DB.prepare("ALTER TABLE player_progress ADD COLUMN wrong_guesses INTEGER NOT NULL DEFAULT 0").run();
+  } catch (error) {
+    const message = String(error?.message || "");
+    if (!/duplicate column|already exists/i.test(message)) throw error;
+  }
+  mistakeSchemaReady = true;
+}
+
+'''
+          if 'async function ensureMistakeSchema(env)' not in s:
+              if marker not in s:
+                  raise SystemExit('logEvent marker not found')
+              s = s.replace(marker, helper + marker, 1)
+
+          handle_marker = 'async function handleMessage(env, message) {\n  const chatId = message.chat.id;\n  const text = String(message.text || "").trim();'
+          handle_new = 'async function handleMessage(env, message) {\n  const chatId = message.chat.id;\n  const text = String(message.text || "").trim();\n\n  await ensureMistakeSchema(env);'
+          if handle_marker in s and '  await ensureMistakeSchema(env);' not in s:
+              s = s.replace(handle_marker, handle_new, 1)
+          p.write_text(s, encoding='utf-8')
           PY
       - name: Test
         run: npm test
@@ -32,5 +52,5 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add src/index.js
-          git diff --cached --quiet || git commit -m "fix: harden playable case button handling"
+          git diff --cached --quiet || git commit -m "fix: self-heal missing case mistake column"
           git push
