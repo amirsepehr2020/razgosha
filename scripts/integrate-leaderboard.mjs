@@ -11,9 +11,8 @@ if (!source.includes('from "./leaderboard.js"')) {
 }
 
 const rankBlock = /async function rank\(env, chatId\) \{[\s\S]*?\n\}\n\nasync function achievements/;
-if (!rankBlock.test(source)) throw new Error("leaderboard rank block not found");
-
-const replacement = `async function leaderboardRows(env) {
+if (rankBlock.test(source)) {
+  const replacement = `async function leaderboardRows(env) {
   const result = await env.DB.prepare(
     "SELECT p.telegram_id, p.first_name, p.detective_name, p.score, p.streak, p.best_streak, COALESCE(SUM(CASE WHEN pp.solved=1 THEN 1 ELSE 0 END), 0) AS solved, COALESCE(SUM(CASE WHEN pp.solved=1 THEN 0 ELSE pp.wrong_guesses END), 0) AS wrong_guesses FROM players p LEFT JOIN player_progress pp ON pp.player_id=p.id WHERE p.account_status='active' GROUP BY p.id"
   ).all();
@@ -47,7 +46,8 @@ async function rank(env, chatId, player, metric = "score") {
 }
 
 async function achievements`;
-source = source.replace(rankBlock, replacement);
+  source = source.replace(rankBlock, replacement);
+}
 
 const dailyOld = 'await env.DB.prepare("UPDATE players SET score=?, streak=?, last_daily_claim=?, updated_at=? WHERE id=?").bind(newScore, newStreak, today, new Date().toISOString(), player.id).run();';
 const dailyNew = 'await env.DB.prepare("UPDATE players SET score=?, streak=?, best_streak=MAX(best_streak, ?), last_daily_claim=?, updated_at=? WHERE id=?").bind(newScore, newStreak, newStreak, today, new Date().toISOString(), player.id).run();';
