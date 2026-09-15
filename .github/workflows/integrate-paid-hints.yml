@@ -1,0 +1,157 @@
+name: Integrate Paid Hints
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  integrate:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Run tests before integration
+        run: npm test
+
+      - name: Integrate paid hints into bot
+        shell: bash
+        run: |
+          python3 <<'PY'
+          from pathlib import Path
+
+          path = Path('src/index.js')
+          text = path.read_text()
+          marker = '// PAID_HINTS_SYSTEM'
+          if marker in text:
+              print('Paid hints already integrated.')
+              raise SystemExit(0)
+
+          text = text.replace(
+              'import { calculateCaseScore, getMistakeWarning, recordCaseMistake } from "./score-penalty.js";\n',
+              'import { calculateCaseScore, getMistakeWarning, recordCaseMistake } from "./score-penalty.js";\nimport { getPaidHints, getPaidHintCost } from "./paid-hints.js";\n'
+          )
+
+          text = text.replace(
+              'const NEXT_STAGE = "➡️ مرحله بعد";\n',
+              'const NEXT_STAGE = "➡️ مرحله بعد";\nconst PAID_HINTS_LABEL = "💡 خرید سرنخ";\nconst PAID_HINT_PREFIX = "💡 خرید سرنخ ";\n'
+          )
+
+          old_keyboard = '''  rows.push([isFinalStage(c, step) ? PUZZLE_LABEL : NEXT_STAGE]);\n  rows.push([CASES_LABEL, BACK]);'''
+          new_keyboard = '''  rows.push([isFinalStage(c, step) ? PUZZLE_LABEL : NEXT_STAGE]);\n  rows.push([PAID_HINTS_LABEL]);\n  rows.push([CASES_LABEL, BACK]);'''
+          if old_keyboard not in text:
+              raise SystemExit('caseKeyboard anchor not found')
+          text = text.replace(old_keyboard, new_keyboard, 1)
+
+          anchor = '''function puzzleKeyboard(c) {'''
+          helpers = r'''// PAID_HINTS_SYSTEM
+async function paidHintsState(env, player, caseId) {
+  const rows = await env.DB.prepare(
+    "SELECT hint_index FROM identity_paid_hints WHERE telegram_id=? AND case_id=? ORDER BY hint_index"
+  ).bind(String(player.telegram_id), caseId).all();
+  return new Set(rows.results.map(r => Number(r.hint_index)));
+}
+
+function paidHintsKeyboard(hints, purchased) {
+  const rows = [];
+  for (let i = 0; i < hints.length; i++) {
+    const cost = getPaidHintCost(i);
+    rows.push([purchased.has(i) ? `✅ سرنخ ${i + 1} — خریداری شده` : `💡 خرید سرنخ ${i + 1} — ${cost} امتیاز`]);
+  }
+  rows.push([BACK]);
+  return keyboard(rows, "سرنخ کمکی می‌خوای؟");
+}
+
+async function showPaidHints(env, chatId, player, activeCase) {
+  const hints = getPaidHints(activeCase, activeCase.current_step);
+  const purchased = await paidHintsState(env, player, activeCase.id);
+  const balance = Number(player.score || 0);
+  const lines = hints.map((hint, i) => {
+    if (purchased.has(i)) return `${hint}`;
+    return `💡 سرنخ اضافه ${i + 1} — ${getPaidHintCost(i)} امتیاز`;
+  });
+  return sendMessage(
+    env,
+    chatId,
+    `💡 فروشگاه سرنخ\n\n💰 موجودی: ${balance} امتیاز\n\n${lines.join("\\n")}\n\nاین سرنخ‌ها جدا از سرنخ‌های اصلی پرونده‌ان و فقط با امتیاز خریداری می‌شن.`,
+    paidHintsKeyboard(hints, purchased),
+    650,
+    "💡"
+  );
+}
+
+async function buyPaidHint(env, chatId, player, activeCase, hintIndex) {
+  const index = Number(hintIndex);
+  const cost = getPaidHintCost(index);
+  const hints = getPaidHints(activeCase, activeCase.current_step);
+  if (cost === null || !hints[index]) return showPaidHints(env, chatId, player, activeCase);
+
+  const existing = await env.DB.prepare(
+    "SELECT 1 FROM identity_paid_hints WHERE telegram_id=? AND case_id=? AND hint_index=?"
+  ).bind(String(player.telegram_id), activeCase.id, index).first();
+  if (existing) return sendMessage(env, chatId, `${hints[index]}\n\nاین سرنخ رو قبلاً خریدی 😉`, paidHintsKeyboard(hints, new Set([index])), 700, "🔍");
+
+  const now = new Date().toISOString();
+  const purchase = await env.DB.prepare(
+    "INSERT OR IGNORE INTO identity_paid_hints (telegram_id, case_id, hint_index, purchased_at) SELECT ?, ?, ?, ? WHERE EXISTS (SELECT 1 FROM players WHERE id=? AND account_status='active')"
+  ).bind(String(player.telegram_id), activeCase.id, index, now, player.id).run();
+  if (Number(purchase?.meta?.changes || 0) !== 1) return showPaidHints(env, chatId, player, activeCase);
+
+  const charged = await env.DB.prepare(
+    "UPDATE players SET score=score-?, updated_at=? WHERE id=? AND score>=? AND account_status='active'"
+  ).bind(cost, now, player.id, cost).run();
+  if (Number(charged?.meta?.changes || 0) !== 1) {
+    await env.DB.prepare("DELETE FROM identity_paid_hints WHERE telegram_id=? AND case_id=? AND hint_index=?").bind(String(player.telegram_id), activeCase.id, index).run();
+    return sendMessage(env, chatId, `❌ امتیازت برای این سرنخ کافی نیست.\n\n💰 هزینه: ${cost}\n🏆 موجودی: ${Number(player.score || 0)}`, paidHintsKeyboard(hints, new Set()), 550, "💰");
+  }
+
+  logEvent("paid_hint_purchased", { telegram_id: String(player.telegram_id), player_id: player.id, case_id: activeCase.id, hint_index: index, cost });
+  const updatedPlayer = await findPlayer(env, player.telegram_id);
+  const purchased = await paidHintsState(env, updatedPlayer, activeCase.id);
+  return sendMessage(env, chatId, `✅ سرنخ خریداری شد!\n\n${hints[index]}\n\n💸 -${cost} امتیاز\n💰 موجودی جدید: ${Number(updatedPlayer?.score || 0)} امتیاز`, paidHintsKeyboard(hints, purchased), 800, "💡");
+}
+
+'''
+          if anchor not in text:
+              raise SystemExit('puzzleKeyboard anchor not found')
+          text = text.replace(anchor, helpers + anchor, 1)
+
+          old_active = '''    const stage = getStage(activeCase, activeCase.current_step);\n    const stageClues = getStageClues(activeCase, activeCase.current_step);'''
+          new_active = '''    const stage = getStage(activeCase, activeCase.current_step);\n    if (text === PAID_HINTS_LABEL) return showPaidHints(env, chatId, player, activeCase);\n    if (text.startsWith(PAID_HINT_PREFIX)) {\n      const match = text.match(/^💡 خرید سرنخ (\\d+) — \\d+ امتیاز$/);\n      if (match) return buyPaidHint(env, chatId, player, activeCase, Number(match[1]) - 1);\n    }\n    const stageClues = getStageClues(activeCase, activeCase.current_step);'''
+          if old_active not in text:
+              raise SystemExit('active case anchor not found')
+          text = text.replace(old_active, new_active, 1)
+
+          path.write_text(text)
+          print('Paid hint integration applied.')
+          PY
+
+      - name: Validate integrated bot
+        run: |
+          node --check src/index.js
+          node --check src/paid-hints.js
+          npm test
+
+      - name: Commit integration
+        run: |
+          if git diff --quiet; then
+            echo "No integration changes to commit."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/index.js
+          git commit -m "feat: integrate purchasable hints into all cases"
+          git push
