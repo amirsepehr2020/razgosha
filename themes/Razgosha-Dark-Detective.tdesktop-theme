@@ -1,0 +1,104 @@
+// Razgosha Dark Detective — Telegram Desktop
+// Deep charcoal + investigation green
+
+windowBg: #0B100E;
+windowFg: #E8F5EC;
+windowBgOver: #17271E;
+windowBgRipple: #244332;
+windowFgOver: #F1FFF4;
+windowSubTextFg: #81998A;
+windowSubTextFgOver: #A8C9B1;
+windowBoldFg: #F0FFF4;
+windowBoldFgOver: #FFFFFF;
+windowBgActive: #2F8F4E;
+windowFgActive: #F4FFF6;
+windowActiveTextFg: #69E68A;
+
+activeButtonBg: #2F8F4E;
+activeButtonBgOver: #3BAF5D;
+activeButtonBgRipple: #4AC96D;
+activeButtonFg: #F4FFF6;
+activeButtonFgOver: #FFFFFF;
+activeButtonSecondaryFg: #BFF6C9;
+activeLineFg: #69E68A;
+
+lightButtonBg: #111A16;
+lightButtonBgOver: #17271E;
+lightButtonBgRipple: #244332;
+lightButtonFg: #69E68A;
+lightButtonFgOver: #8AF0A4;
+
+menuBg: #0F1713;
+menuBgOver: #17271E;
+menuBgRipple: #244332;
+menuIconFg: #81998A;
+menuIconFgOver: #69E68A;
+menuFgDisabled: #506258;
+menuSeparatorFg: #223127;
+
+dialogsBg: #0F1713;
+dialogsNameFg: #F0FFF4;
+dialogsDateFg: #789082;
+dialogsTextFg: #8EA695;
+dialogsTextFgService: #69E68A;
+dialogsDraftFg: #FF7777;
+dialogsUnreadBg: #69E68A;
+dialogsUnreadFg: #071009;
+dialogsBgOver: #17271E;
+dialogsNameFgOver: #FFFFFF;
+dialogsBgActive: #21462D;
+dialogsNameFgActive: #F0FFF4;
+
+topBarBg: #111A16;
+emojiPanBg: #101613;
+emojiPanHeaderBg: #111A16;
+
+msgInBg: #18221D;
+msgInBgSelected: #21342A;
+msgOutBg: #204B31;
+msgOutBgSelected: #2B6040;
+msgInServiceFg: #69E68A;
+msgOutServiceFg: #8AF0A4;
+msgInDateFg: #8AA594;
+msgOutDateFg: #A8D8B4;
+msgServiceFg: #A9DDB6;
+msgServiceBg: #183322;
+msgInReplyBarColor: #52C878;
+msgOutReplyBarColor: #74E395;
+
+historyComposeAreaBg: #111A16;
+historyComposeAreaFg: #E8F5EC;
+historyComposeIconFg: #81998A;
+historyComposeIconFgOver: #69E68A;
+historySendIconFg: #69E68A;
+historySendIconFgOver: #8AF0A4;
+historyReplyBg: #17211C;
+historyPinnedBg: #17211C;
+
+scrollBarBg: #69E68A55;
+scrollBarBgOver: #69E68A88;
+scrollBg: #00000000;
+scrollBgOver: #69E68A20;
+
+profileVerifiedCheckBg: #69E68A;
+profileVerifiedCheckFg: #071009;
+notificationBg: #101613;
+toastBg: #183322;
+toastFg: #E8F5EC;
+
+titleBgActive: #111A16;
+titleButtonBg: #00000000;
+titleButtonBgActive: #00000000;
+titleButtonBgActiveOver: #17271E;
+titleButtonFgActive: #81998A;
+titleButtonFgActiveOver: #69E68A;
+titleButtonCloseBgActiveOver: #5A2020;
+titleButtonCloseFgActive: #FF7777;
+
+sideBarBg: #0F1713;
+sideBarBgActive: #17271E;
+sideBarBgRipple: #244332;
+
+mediaPlayerBg: #111A16;
+mediaPlayerActiveFg: #69E68A;
+mediaPlayerInactiveFg: #52675A;
