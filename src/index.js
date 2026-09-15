@@ -4,6 +4,7 @@ import { getStage, getStageClues, getStageCount, isFinalStage } from "./stage-en
 import { getCasePage, getUnlockedCaseId } from "./case-pagination.js";
 import { calculateCaseScore, getMistakeWarning, recordCaseMistake } from "./score-penalty.js";
 import { getPaidHints, getPaidHintCost } from "./paid-hints.js";
+import { LEADERBOARD_TYPES, rankLeaderboard } from "./leaderboard.js";
 import { buildAccountControls } from "./account-controls.js";
 
 const MENU = {
@@ -46,6 +47,7 @@ const CLUE_LABELS = ["🔍 سرنخ ۱", "🔍 سرنخ ۲", "🔍 سرنخ ۳",
 const NEXT_STAGE = "➡️ مرحله بعد";
 const PAID_HINTS_LABEL = "💡 خرید سرنخ";
 const PAID_HINT_PREFIX = "💡 خرید سرنخ ";
+const LEADERBOARD_METRICS = Object.fromEntries(LEADERBOARD_TYPES.map(([id, label]) => [label, id]));
 
 const HELP_TOPICS = [
   ["🎮 نحوه بازی", "how-to"],
@@ -382,10 +384,37 @@ async function profile(env, chatId, player) {
   ], "پروفایل کارآگاهی..."), 550, "👤");
 }
 
-async function rank(env, chatId) {
-  const rows = await env.DB.prepare("SELECT first_name, detective_name, score FROM players WHERE account_status='active' ORDER BY score DESC, id ASC LIMIT 10").all();
-  const text = rows.results.map((p, i) => `${i + 1}. ${esc(p.detective_name || p.first_name || "کارآگاه")} — ${p.score} امتیاز`).join("\n") || "هنوز کسی امتیاز نگرفته.";
-  return sendMessage(env, chatId, `🏆 تالار کارآگاه‌ها\n\n${text}\n\nتو هم می‌تونی بیای بالای این لیست 🔥`, MENU, 700, "🏆");
+async function leaderboardRows(env) {
+  const result = await env.DB.prepare(
+    "SELECT p.telegram_id, p.first_name, p.detective_name, p.score, p.streak, p.best_streak, COALESCE(SUM(CASE WHEN pp.solved=1 THEN 1 ELSE 0 END), 0) AS solved, COALESCE(SUM(CASE WHEN pp.solved=1 THEN 0 ELSE pp.wrong_guesses END), 0) AS wrong_guesses FROM players p LEFT JOIN player_progress pp ON pp.player_id=p.id WHERE p.account_status='active' GROUP BY p.id"
+  ).all();
+  return result.results || [];
+}
+
+function leaderboardKeyboard() {
+  return keyboard([
+    [LEADERBOARD_TYPES[0][1], LEADERBOARD_TYPES[1][1]],
+    [LEADERBOARD_TYPES[2][1], LEADERBOARD_TYPES[3][1]],
+    [BACK]
+  ], "نوع رتبه‌بندی...");
+}
+
+function leaderboardValueText(metric, row) {
+  if (metric === "accuracy") return `🎯 ${row.value}% دقت`;
+  if (metric === "solved") return `🧠 ${row.value} پرونده`;
+  if (metric === "streak") return `🔥 ${row.value} روز`;
+  return `🏆 ${row.value} امتیاز`;
+}
+
+async function rank(env, chatId, player, metric = "score") {
+  const rows = await leaderboardRows(env);
+  const result = rankLeaderboard(rows, metric, String(player?.telegram_id || ""), 10);
+  const meta = LEADERBOARD_TYPES.find(x => x[0] === metric) || LEADERBOARD_TYPES[0];
+  const medals = ["🥇", "🥈", "🥉"];
+  const lines = result.top.map((p, i) => `${medals[i] || `#${p.rank}`} ${esc(p.detective_name || p.first_name || "کارآگاه")} — ${leaderboardValueText(metric, p)}`).join("\n") || "هنوز رکوردی ثبت نشده.";
+  const me = result.current;
+  const myLine = me && me.rank > 10 ? `\n\n📍 رتبه تو: #${me.rank} — ${leaderboardValueText(metric, me)}` : me ? `\n\n📍 رتبه تو: #${me.rank}` : "";
+  return sendMessage(env, chatId, `👑 لیدربورد رازگشا\n\n${meta[1]}\n\n${lines}${myLine}\n\n🔥 رقابت ادامه داره؛ جای تو بین بهترین‌ها خالیه!`, leaderboardKeyboard(), 700, "🏆");
 }
 
 async function achievements(env, chatId, player) {
@@ -433,7 +462,7 @@ async function daily(env, chatId, player) {
   if (player.last_daily_claim === today) return sendMessage(env, chatId, "🎯 مأموریت امروز رو قبلاً گرفتی!\n\nفردا دوباره یه مأموریت تازه داریم 😎", MENU, 600, "🎯");
   const newScore = (player.score || 0) + 25;
   const newStreak = (player.streak || 0) + 1;
-  await env.DB.prepare("UPDATE players SET score=?, streak=?, last_daily_claim=?, updated_at=? WHERE id=?").bind(newScore, newStreak, today, new Date().toISOString(), player.id).run();
+  await env.DB.prepare("UPDATE players SET score=?, streak=?, best_streak=MAX(best_streak, ?), last_daily_claim=?, updated_at=? WHERE id=?").bind(newScore, newStreak, newStreak, today, new Date().toISOString(), player.id).run();
   return sendMessage(env, chatId, `🎯 مأموریت امروز انجام شد!\n\n💰 +۲۵ امتیاز\n🔥 استریک: ${newStreak} روز\n\nهمین‌جوری ادامه بده کارآگاه؛ فردا هم یه جایزه داریم 👀`, MENU, 800, "🎉");
 }
 
@@ -580,7 +609,8 @@ async function handleMessage(env, message) {
   if (text === "❌ نه، بی‌خیال") return profile(env, chatId, player);
   if (text === "✅ بله، ری‌استارت کن") return resetAccount(env, chatId, player);
   if (text === "🗑️ بله، حذفش کن") return deleteAccount(env, chatId, player);
-  if (text === "/rank" || text === "🏆 رتبه‌بندی") return rank(env, chatId);
+  if (text === "/rank" || text === "🏆 رتبه‌بندی") return rank(env, chatId, player, "score");
+  if (LEADERBOARD_METRICS[text]) return rank(env, chatId, player, LEADERBOARD_METRICS[text]);
   if (text === "/cases" || text === "🔎 پرونده‌ها" || text === CASES_LABEL) return showCases(env, chatId, player, 1);
   if (text.replace(/[\u200c\u200d\ufe0f]/g, "") === "🎯 پرونده قابل انجام" || text.includes("پرونده قابل انجام")) {
     try {
