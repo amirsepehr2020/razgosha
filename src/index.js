@@ -526,11 +526,18 @@ async function handleMessage(env, message) {
   if (text === "🗑️ بله، حذفش کن") return deleteAccount(env, chatId, player);
   if (text === "/rank" || text === "🏆 رتبه‌بندی") return rank(env, chatId);
   if (text === "/cases" || text === "🔎 پرونده‌ها" || text === CASES_LABEL) return showCases(env, chatId, player, 1);
-  if (text === "🎯 پرونده قابل انجام") {
-    const rows = await env.DB.prepare("SELECT case_id, solved FROM player_progress WHERE player_id = ?").bind(player.id).all();
-    const solvedIds = getSolvedCaseIds(rows.results);
-    const nextId = getUnlockedCaseId(CASES, solvedIds);
-    return nextId ? startCase(env, chatId, player, nextId) : sendMenu(env, chatId, "👑 همه پرونده‌های فعلی رو حل کردی!", "🎉");
+  if (text.replace(/[\u200c\u200d\ufe0f]/g, "") === "🎯 پرونده قابل انجام" || text.includes("پرونده قابل انجام")) {
+    try {
+      const rows = await env.DB.prepare("SELECT case_id, solved FROM player_progress WHERE player_id = ?").bind(player.id).all();
+      const solvedIds = getSolvedCaseIds(rows?.results || []);
+      const nextId = getUnlockedCaseId(CASES, solvedIds);
+      logEvent("playable_case_requested", { telegram_id: String(message.from.id), player_id: player.id, next_case_id: nextId || null, solved_count: solvedIds.size });
+      if (!nextId) return sendMenu(env, chatId, "👑 همه پرونده‌های فعلی رو حل کردی!", "🎉");
+      return await startCase(env, chatId, player, nextId);
+    } catch (error) {
+      logEvent("playable_case_error", { telegram_id: String(message.from.id), player_id: player.id, message: error?.message || "unknown" });
+      return sendMessage(env, chatId, "⚠️ پرونده قابل انجام فعلاً نتونست باز بشه. دوباره بزن؛ اگر باز هم نشد، مشکل رو ثبت کردم و می‌تونم دقیق‌تر بررسیش کنم. 🔎", caseListKeyboard(1), 350, "⚠️");
+    }
   }
   const pageNav = text.match(/^(?:◀️ صفحه (\d+)|صفحه (\d+) ▶️)$/);
   if (pageNav) return showCases(env, chatId, player, Number(pageNav[1] || pageNav[2]));
