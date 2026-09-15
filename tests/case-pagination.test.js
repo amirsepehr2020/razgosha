@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import { CASES } from "../src/cases.js";
 import { CASES_PER_PAGE, getCasePage, getUnlockedCaseId } from "../src/case-pagination.js";
+import { getSolvedCaseIds } from "../src/index.js";
 
 test("case archive is paginated into 10 cases per page", () => {
   assert.equal(CASES_PER_PAGE, 10);
@@ -24,6 +25,18 @@ test("next unlocked case is the first unsolved case in sequence", () => {
   assert.equal(getUnlockedCaseId(CASES, new Set()), "case-001");
   assert.equal(getUnlockedCaseId(CASES, new Set(["case-001"])), "case-002");
   assert.equal(getUnlockedCaseId(CASES, new Set(["case-001", "case-002"])), "case-003");
+});
+
+test("solved case rows treat numeric and string zero as unsolved", () => {
+  assert.deepEqual(
+    [...getSolvedCaseIds([
+      { case_id: "case-001", solved: 0 },
+      { case_id: "case-002", solved: "0" },
+      { case_id: "case-003", solved: 1 },
+      { case_id: "case-004", solved: "1" }
+    ])],
+    ["case-003", "case-004"]
+  );
 });
 
 test("index uses compact archive controls instead of 60 case buttons", () => {
