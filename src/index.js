@@ -12,7 +12,7 @@ const MENU = {
   keyboard: [
     [{ text: FEATURED_CASES_LABEL }],
     [{ text: "🎯 مأموریت امروز" }, { text: "👤 پروفایل" }],
-    [{ text: "👤 پروفایل" }, { text: "🏆 رتبه‌بندی" }],
+    [{ text: "🏆 رتبه‌بندی" }],
     [{ text: "🏅 دستاوردها" }, { text: "🎒 کوله‌باز" }],
     [{ text: "ℹ️ راهنما" }]
   ],
