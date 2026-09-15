@@ -17,7 +17,7 @@ if MENU_MARKER in source:
 
 FUNCTION_MARKER = 'async function profile(env, chatId, player) {'
 if 'async function accountSettings(env, chatId, player)' not in source:
-    functions = '''async function resetAccount(env, chatId, player) {
+    functions = r'''async function resetAccount(env, chatId, player) {
   const now = new Date().toISOString();
   await env.DB.batch([
     env.DB.prepare("DELETE FROM player_progress WHERE player_id=?").bind(player.id),
@@ -63,7 +63,7 @@ async function confirmAccountAction(env, chatId, player, action) {
     if FUNCTION_MARKER not in source:
         raise SystemExit("account-controls: profile marker not found")
     source = source.replace(FUNCTION_MARKER, 'async function legacyProfile(env, chatId, player) {', 1)
-    profile_wrapper = '''async function profile(env, chatId, player) {
+    profile_wrapper = r'''async function profile(env, chatId, player) {
   const solved = await env.DB.prepare("SELECT COUNT(*) AS count FROM player_progress WHERE player_id=? AND solved=1").bind(player.id).first();
   const solvedCount = Number(solved?.count || 0);
   const controls = buildAccountControls();
@@ -75,7 +75,9 @@ async function confirmAccountAction(env, chatId, player, action) {
 
 '''
     source = source.replace('async function legacyProfile(env, chatId, player) {', functions + 'async function legacyProfile(env, chatId, player) {', 1)
-    next_marker = 'async function rank(env, chatId) {'
+    next_marker = 'async function rank(env, chatId, player) {'
+    if next_marker not in source:
+        next_marker = 'async function rank(env, chatId) {'
     if next_marker not in source:
         raise SystemExit("account-controls: rank marker not found")
     source = source.replace(next_marker, profile_wrapper + next_marker, 1)
