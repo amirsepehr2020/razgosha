@@ -24,4 +24,18 @@ if old in s:
 s = s.replace("👑 حل هر ۱۰ پرونده فعلی", "👑 حل هر ۶۰ پرونده فعلی")
 s = s.replace("هر ۱۰ پرونده فعلی", "هر ۶۰ پرونده فعلی")
 
+# Normalize D1/SQLite solved flags before calculating the next playable case.
+helper_marker = "function caseFromButton(text) {"
+helper = '''function getSolvedCaseIds(rows) {
+  return new Set((rows || []).filter(r => Number(r?.solved || 0) === 1).map(r => r.case_id));
+}
+
+'''
+if helper not in s and helper_marker in s:
+    s = s.replace(helper_marker, helper + helper_marker, 1)
+s = s.replace(
+    '    const solvedIds = new Set(rows.results.filter(r => r.solved).map(r => r.case_id));\n    const nextId = getUnlockedCaseId(CASES, solvedIds);',
+    '    const solvedIds = getSolvedCaseIds(rows.results);\n    const nextId = getUnlockedCaseId(CASES, solvedIds);'
+)
+
 p.write_text(s, encoding="utf-8")
