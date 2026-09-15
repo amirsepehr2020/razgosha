@@ -30,6 +30,8 @@ jobs:
         run: python scripts/integrate_score_penalty.py
       - name: Integrate paid hints
         run: node scripts/integrate-paid-hints.mjs
+      - name: Integrate leaderboard
+        run: node scripts/integrate-leaderboard.mjs
       - name: Validate
         run: |
           node --check src/index.js
@@ -39,7 +41,9 @@ jobs:
           node --check src/cases.js
           node --check src/score-penalty.js
           node --check src/paid-hints.js
+          node --check src/leaderboard.js
           node --check scripts/integrate-paid-hints.mjs
+          node --check scripts/integrate-leaderboard.mjs
           npm test
       - name: Commit activation
         run: |
