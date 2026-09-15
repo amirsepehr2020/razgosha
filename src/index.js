@@ -3,6 +3,7 @@ import { CASES, getCase } from "./cases.js";
 import { getStage, getStageClues, getStageCount, isFinalStage } from "./stage-engine.js";
 import { getCasePage, getUnlockedCaseId } from "./case-pagination.js";
 import { calculateCaseScore, getMistakeWarning, recordCaseMistake } from "./score-penalty.js";
+import { buildAccountControls } from "./account-controls.js";
 
 const MENU = {
   keyboard: [
@@ -268,9 +269,61 @@ async function getActiveCase(env, playerId) {
   const c = getCase(row.case_id);
   return c ? { ...c, current_step: Number(row.current_step || 0), wrong_guesses: Number(row.wrong_guesses || 0) } : null;
 }
-async function profile(env, chatId, player) {
+async function resetAccount(env, chatId, player) {
+  const now = new Date().toISOString();
+  await env.DB.batch([
+    env.DB.prepare("DELETE FROM player_progress WHERE player_id=?").bind(player.id),
+    env.DB.prepare("DELETE FROM case_rewards WHERE player_id=?").bind(player.id),
+    env.DB.prepare("DELETE FROM player_achievements WHERE player_id=?").bind(player.id),
+    env.DB.prepare("DELETE FROM player_inventory WHERE player_id=?").bind(player.id),
+    env.DB.prepare("UPDATE players SET score=0, level=1, streak=0, last_daily_claim=NULL, clues_viewed=0, puzzles_solved=0, perfect_streak=0, account_status='active', updated_at=? WHERE id=?").bind(now, player.id)
+  ]);
+  logEvent("account_reset", { player_id: player.id, telegram_id: String(player.telegram_id) });
+  return sendMenu(env, chatId, "🔄 اکانتت ری‌استارت شد!\n\nهمه‌چی از صفر شروع شد؛ خود حساب و هویتت سر جاشه.\n\nحالا بیا ببینیم این بار چند پرونده رو می‌ترکونی 😎🔥", "🔄");
+}
+
+async function deleteAccount(env, chatId, player) {
+  await env.DB.batch([
+    env.DB.prepare("DELETE FROM player_progress WHERE player_id=?").bind(player.id),
+    env.DB.prepare("DELETE FROM case_rewards WHERE player_id=?").bind(player.id),
+    env.DB.prepare("DELETE FROM player_achievements WHERE player_id=?").bind(player.id),
+    env.DB.prepare("DELETE FROM player_inventory WHERE player_id=?").bind(player.id),
+    env.DB.prepare("DELETE FROM players WHERE id=?").bind(player.id)
+  ]);
+  logEvent("account_deleted", { player_id: player.id, telegram_id: String(player.telegram_id) });
+  return sendMessage(env, chatId, "🗑️ حسابت پاک شد.\n\nهر وقت خواستی برگردی، فقط /start رو بزن و از اول شروع کن. 👋", removeKeyboard(), 450, "🗑️");
+}
+
+async function accountSettings(env, chatId, player) {
+  const controls = buildAccountControls();
+  return sendMessage(env, chatId, `⚙️ حساب کارآگاهی\n\n👤 ${esc(player.detective_name || player.first_name || "کارآگاه")}\n🏆 ${player.score || 0} امتیاز\n⭐ سطح ${player.level || 1}\n\nاز اینجا می‌تونی حسابت رو ری‌استارت کنی یا برای همیشه حذفش کنی.`, keyboard([
+    [controls.reset.button],
+    [controls.delete.button],
+    [BACK]
+  ], "مدیریت حساب..."), 550, "⚙️");
+}
+
+async function confirmAccountAction(env, chatId, player, action) {
+  const controls = buildAccountControls();
+  const item = controls[action];
+  const confirm = action === "reset" ? "✅ بله، ری‌استارت کن" : "🗑️ بله، حذفش کن";
+  const cancel = "❌ نه، بی‌خیال";
+  return sendMessage(env, chatId, `${item.confirmation}\n\nاگر مطمئنی، دکمه تأیید رو بزن.`, keyboard([[confirm], [cancel, BACK]], "تأیید عملیات..."), 500, "⚠️");
+}
+
+async function legacyProfile(env, chatId, player) {
   const stats = await env.DB.prepare("SELECT COUNT(*) AS total, SUM(solved) AS solved FROM player_progress WHERE player_id = ?").bind(player.id).first();
   return sendMessage(env, chatId, `👤 پروفایل کارآگاه\n\n🪪 اسم: ${esc(player.detective_name || player.first_name || "کارآگاه")}\n🏆 امتیاز: ${player.score}\n⭐ سطح: ${player.level}\n📁 پرونده‌های حل‌شده: ${stats.solved || 0}\n🔥 استریک روزانه: ${player.streak || 0}\n\nآروم‌آروم بیا بالا؛ رتبه‌ها منتظرتن 😎`, MENU, 550, "👤");
+}
+
+async function profile(env, chatId, player) {
+  const solved = await env.DB.prepare("SELECT COUNT(*) AS count FROM player_progress WHERE player_id=? AND solved=1").bind(player.id).first();
+  const solvedCount = Number(solved?.count || 0);
+  const controls = buildAccountControls();
+  return sendMessage(env, chatId, `👤 پروفایل کارآگاهی\n\n🕵️ ${esc(player.detective_name || player.first_name || "کارآگاه")}\n🏆 امتیاز: ${player.score || 0}\n⭐ سطح: ${player.level || 1}\n🔥 استریک: ${player.streak || 0}\n📁 پرونده‌های حل‌شده: ${solvedCount}\n\n⚙️ مدیریت حساب`, keyboard([
+    [controls.reset.button, controls.delete.button],
+    [BACK]
+  ], "پروفایل کارآگاهی..."), 550, "👤");
 }
 
 async function rank(env, chatId) {
@@ -466,6 +519,11 @@ async function handleMessage(env, message) {
 
   if (text === "/menu" || text === BACK || text === "🏠 منو") return sendMenu(env, chatId);
   if (text === "/profile" || text === "👤 پروفایل") return profile(env, chatId, player);
+  if (text === "🔄 ری‌استارت حساب") return confirmAccountAction(env, chatId, player, "reset");
+  if (text === "🗑️ حذف حساب") return confirmAccountAction(env, chatId, player, "delete");
+  if (text === "❌ نه، بی‌خیال") return profile(env, chatId, player);
+  if (text === "✅ بله، ری‌استارت کن") return resetAccount(env, chatId, player);
+  if (text === "🗑️ بله، حذفش کن") return deleteAccount(env, chatId, player);
   if (text === "/rank" || text === "🏆 رتبه‌بندی") return rank(env, chatId);
   if (text === "/cases" || text === "🔎 پرونده‌ها" || text === CASES_LABEL) return showCases(env, chatId, player, 1);
   if (text === "🎯 پرونده قابل انجام") {
