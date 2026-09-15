@@ -5,11 +5,13 @@ import { getCasePage, getUnlockedCaseId } from "./case-pagination.js";
 import { calculateCaseScore, getMistakeWarning, recordCaseMistake } from "./score-penalty.js";
 import { getPaidHints, getPaidHintCost } from "./paid-hints.js";
 import { LEADERBOARD_TYPES, rankLeaderboard } from "./leaderboard.js";
+import { getStartExperience, FEATURED_CASES_LABEL } from "./start-experience.js";
 import { buildAccountControls } from "./account-controls.js";
 
 const MENU = {
   keyboard: [
-    [{ text: "🔎 پرونده‌ها" }, { text: "🎯 مأموریت امروز" }],
+    [{ text: FEATURED_CASES_LABEL }],
+    [{ text: "🎯 مأموریت امروز" }, { text: "👤 پروفایل" }],
     [{ text: "👤 پروفایل" }, { text: "🏆 رتبه‌بندی" }],
     [{ text: "🏅 دستاوردها" }, { text: "🎒 کوله‌باز" }],
     [{ text: "ℹ️ راهنما" }]
@@ -595,8 +597,12 @@ async function handleMessage(env, message) {
   const text = String(message.text || "").trim();
 
   if (text === "/start") {
+    const existing = await findPlayer(env, message.from.id);
+    const identity = await env.DB.prepare("SELECT 1 FROM player_identities WHERE telegram_id=? LIMIT 1").bind(String(message.from.id)).first();
+    const isFirstStart = !existing && !identity;
     const player = await createAccount(env, message.from);
-    return sendMenu(env, chatId, `🕵️ سلام ${esc(player.detective_name || player.first_name)}!\n\nحساب کارآگاهی‌ات ساخته شد و از اینجا به بعد همه‌چی برای خودته.\n\nده‌ها پرونده منتظرتـه؛ بریم ببینیم چندتاشو می‌تونی حل کنی 😎🔥`, "🎉");
+    const experience = getStartExperience(isFirstStart, esc(player.detective_name || player.first_name || "کارآگاه"));
+    return sendMenu(env, chatId, experience.text, "🎉");
   }
 
   const player = await requireAccount(env, chatId, message.from.id);
@@ -611,7 +617,7 @@ async function handleMessage(env, message) {
   if (text === "🗑️ بله، حذفش کن") return deleteAccount(env, chatId, player);
   if (text === "/rank" || text === "🏆 رتبه‌بندی") return rank(env, chatId, player, "score");
   if (LEADERBOARD_METRICS[text]) return rank(env, chatId, player, LEADERBOARD_METRICS[text]);
-  if (text === "/cases" || text === "🔎 پرونده‌ها" || text === CASES_LABEL) return showCases(env, chatId, player, 1);
+  if (text === "/cases" || text === "🔎 پرونده‌ها" || text === FEATURED_CASES_LABEL || text === CASES_LABEL) return showCases(env, chatId, player, 1);
   if (text.replace(/[\u200c\u200d\ufe0f]/g, "") === "🎯 پرونده قابل انجام" || text.includes("پرونده قابل انجام")) {
     try {
       const rows = await env.DB.prepare("SELECT case_id, solved FROM player_progress WHERE player_id = ?").bind(player.id).all();
