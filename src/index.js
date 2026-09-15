@@ -250,14 +250,14 @@ async function startCase(env, chatId, player, caseId) {
   const c = getCase(caseId);
   if (!c) return sendMenu(env, chatId, "این پرونده رو پیدا نکردم 😅", "🤔");
   const rows = await env.DB.prepare("SELECT case_id, solved FROM player_progress WHERE player_id = ?").bind(player.id).all();
-  const solved = new Set(rows.results.filter(r => r.solved).map(r => r.case_id));
+  const solved = new Set(rows.results.filter(r => Number(r?.solved || 0) === 1).map(r => r.case_id));
   const idx = CASES.findIndex(x => x.id === caseId);
   if (idx > 0 && !solved.has(CASES[idx - 1].id)) return sendMenu(env, chatId, "🔒 این پرونده هنوز باز نیست. اول پرونده بعدیِ مسیرت رو حل کن 😉", "🔒");
   const existing = await env.DB.prepare("SELECT current_step, solved, wrong_guesses FROM player_progress WHERE player_id=? AND case_id=?").bind(player.id, c.id).first();
-  if (!existing || existing.solved) {
+  if (!existing || Number(existing.solved || 0) === 1) {
     await env.DB.prepare(`INSERT INTO player_progress (player_id, case_id, current_step, solved, wrong_guesses, updated_at) VALUES (?, ?, 0, 0, 0, ?) ON CONFLICT(player_id, case_id) DO UPDATE SET current_step=0, solved=0, wrong_guesses=0, updated_at=excluded.updated_at`).bind(player.id, c.id, new Date().toISOString()).run();
   }
-  const step = existing && !existing.solved ? Number(existing.current_step || 0) : 0;
+  const step = existing && Number(existing.solved || 0) !== 1 ? Number(existing.current_step || 0) : 0;
   const stage = getStage(c, step);
   const activeWarning = isFinalStage(c, step) ? `\n\n${getMistakeWarning(Number(existing?.wrong_guesses || 0))}` : "";
   return sendMessage(env, chatId, `📂 ${c.title}\n\n${c.intro}\n\n👥 مظنون‌ها:\n${c.suspects.map((x, i) => `${i + 1}. ${x}`).join("\n")}\n\n🧩 مرحله ${step + 1}/${getStageCount(c)} — ${stage?.title || "بررسی شواهد"}\n\nسرنخ‌ها رو با دقت بررسی کن؛ عجله نکن 👀${activeWarning}`, caseKeyboard(c, step), 1100, "🕵️");
@@ -434,6 +434,10 @@ async function notifyNewAchievements(env, chatId, achievementIds) {
   }
 }
 
+export function getSolvedCaseIds(rows) {
+  return new Set((rows || []).filter(r => Number(r?.solved || 0) === 1).map(r => r.case_id));
+}
+
 function caseFromButton(text) {
   const match = String(text || "").match(/^📁 (\d{3}) —/);
   return match ? `case-${match[1]}` : null;
@@ -466,7 +470,7 @@ async function handleMessage(env, message) {
   if (text === "/cases" || text === "🔎 پرونده‌ها" || text === CASES_LABEL) return showCases(env, chatId, player, 1);
   if (text === "🎯 پرونده قابل انجام") {
     const rows = await env.DB.prepare("SELECT case_id, solved FROM player_progress WHERE player_id = ?").bind(player.id).all();
-    const solvedIds = new Set(rows.results.filter(r => r.solved).map(r => r.case_id));
+    const solvedIds = getSolvedCaseIds(rows.results);
     const nextId = getUnlockedCaseId(CASES, solvedIds);
     return nextId ? startCase(env, chatId, player, nextId) : sendMenu(env, chatId, "👑 همه پرونده‌های فعلی رو حل کردی!", "🎉");
   }
