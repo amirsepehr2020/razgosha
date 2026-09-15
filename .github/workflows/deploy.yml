@@ -32,6 +32,9 @@ jobs:
       - name: Integrate leaderboard
         run: node scripts/integrate-leaderboard.mjs
 
+      - name: Integrate Telegram themes
+        run: node scripts/integrate-themes.mjs
+
       - name: Validate
         run: |
           node --check src/index.js
@@ -42,9 +45,11 @@ jobs:
           node --check src/score-penalty.js
           node --check src/paid-hints.js
           node --check src/leaderboard.js
+          node --check src/themes.js
           node --check scripts/integrate-start-experience.mjs
           node --check scripts/integrate-paid-hints.mjs
           node --check scripts/integrate-leaderboard.mjs
+          node --check scripts/integrate-themes.mjs
           npm test
 
       - name: Install Wrangler
