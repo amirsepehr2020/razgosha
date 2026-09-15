@@ -1,0 +1,182 @@
+name: Apply Permanent Identity Anti-Cheat
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Patch permanent identity logic
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import re
+
+          p = Path('src/index.js')
+          s = p.read_text(encoding='utf-8')
+
+          helper = r'''async function ensureIdentity(env, from) {
+            const telegramId = String(from.id);
+            const now = new Date().toISOString();
+            await env.DB.prepare(`INSERT OR IGNORE INTO player_identities (telegram_id, created_at, updated_at) VALUES (?, ?, ?)`)
+              .bind(telegramId, now, now).run();
+            await env.DB.prepare(`UPDATE player_identities SET updated_at=? WHERE telegram_id=?`)
+              .bind(now, telegramId).run();
+            return env.DB.prepare(`SELECT id FROM player_identities WHERE telegram_id=?`).bind(telegramId).first();
+          }
+
+          async function syncIdentityCase(env, playerId, caseId) {
+            const player = await env.DB.prepare(`SELECT identity_id FROM players WHERE id=?`).bind(playerId).first();
+            if (!player?.identity_id) return;
+            const progress = await env.DB.prepare(`SELECT case_id, current_step, wrong_guesses, solved, updated_at FROM player_progress WHERE player_id=? AND case_id=?`)
+              .bind(playerId, caseId).first();
+            if (!progress) return;
+            await env.DB.prepare(`INSERT INTO identity_case_history (identity_id, case_id, current_step, wrong_guesses, solved, updated_at)
+              VALUES (?, ?, ?, ?, ?, ?)
+              ON CONFLICT(identity_id, case_id) DO UPDATE SET
+                current_step=excluded.current_step,
+                wrong_guesses=MAX(identity_case_history.wrong_guesses, excluded.wrong_guesses),
+                solved=MAX(identity_case_history.solved, excluded.solved),
+                updated_at=excluded.updated_at`)
+              .bind(player.identity_id, caseId, Number(progress.current_step || 0), Number(progress.wrong_guesses || 0), Number(progress.solved || 0), progress.updated_at || new Date().toISOString()).run();
+          }
+
+          async function restoreIdentityState(env, playerId, identityId) {
+            await env.DB.batch([
+              env.DB.prepare(`INSERT OR IGNORE INTO player_progress (player_id, case_id, current_step, solved, wrong_guesses, updated_at)
+                SELECT ?, case_id, current_step, solved, wrong_guesses, updated_at FROM identity_case_history WHERE identity_id=?`).bind(playerId, identityId),
+              env.DB.prepare(`INSERT OR IGNORE INTO player_achievements (player_id, achievement_id, unlocked_at)
+                SELECT ?, achievement_id, unlocked_at FROM identity_achievements WHERE identity_id=?`).bind(playerId, identityId),
+              ...ITEMS.map(([id]) => env.DB.prepare(`INSERT OR IGNORE INTO player_inventory (player_id, item_id, quantity) VALUES (?, ?, 0)`).bind(playerId, id))
+            ]);
+            const latestClaim = await env.DB.prepare(`SELECT mission_date FROM identity_daily_claims WHERE identity_id=? ORDER BY mission_date DESC LIMIT 1`).bind(identityId).first();
+            if (latestClaim?.mission_date) await env.DB.prepare(`UPDATE players SET last_daily_claim=? WHERE id=?`).bind(latestClaim.mission_date, playerId).run();
+          }
+
+          if (!s.includes('async function ensureIdentity(env, from)')) {
+            s = s.replace('function logEvent(event, details = {}) {', helper + '\nfunction logEvent(event, details = {}) {', 1)
+          }
+
+          create_re = re.compile(r'async function createAccount\(env, from\) \{.*?\n\}\n\nasync function requireAccount', re.S)
+          create_new = '''async function createAccount(env, from) {
+            const now = new Date().toISOString();
+            const existing = await findPlayer(env, from.id);
+            const identity = await ensureIdentity(env, from);
+            if (existing) {
+              await env.DB.prepare(`UPDATE players SET username=?, first_name=?, detective_name=?, account_status='active', identity_id=COALESCE(identity_id, ?), updated_at=? WHERE id=?`)
+                .bind(from.username || null, from.first_name || "کارآگاه", from.first_name || "کارآگاه", identity.id, now, existing.id).run();
+              return findPlayer(env, from.id);
+            }
+            await env.DB.prepare(`INSERT INTO players (telegram_id, username, first_name, detective_name, score, level, account_status, identity_id, created_at, updated_at)
+              VALUES (?, ?, ?, ?, 0, 1, 'active', ?, ?, ?)`)
+              .bind(String(from.id), from.username || null, from.first_name || "کارآگاه", from.first_name || "کارآگاه", identity.id, now, now).run();
+            const player = await findPlayer(env, from.id);
+            await restoreIdentityState(env, player.id, identity.id);
+            return findPlayer(env, from.id);
+          }
+
+          async function requireAccount'''
+          s, n = create_re.subn(create_new, s, count=1)
+          if n != 1: raise SystemExit('createAccount patch failed')
+
+          reset_re = re.compile(r'async function resetAccount\(env, chatId, player\) \{.*?\n\}\n\nasync function deleteAccount', re.S)
+          reset_new = '''async function resetAccount(env, chatId, player) {
+            const now = new Date().toISOString();
+            const identity = await env.DB.prepare(`SELECT identity_id FROM players WHERE id=?`).bind(player.id).first();
+            await env.DB.batch([
+              env.DB.prepare("DELETE FROM player_progress WHERE player_id=?").bind(player.id),
+              env.DB.prepare("DELETE FROM case_rewards WHERE player_id=?").bind(player.id),
+              env.DB.prepare("DELETE FROM player_achievements WHERE player_id=?").bind(player.id),
+              env.DB.prepare("DELETE FROM player_inventory WHERE player_id=?").bind(player.id),
+              env.DB.prepare("UPDATE players SET score=0, level=1, streak=0, last_daily_claim=NULL, clues_viewed=0, puzzles_solved=0, perfect_streak=0, account_status='active', updated_at=? WHERE id=?").bind(now, player.id)
+            ]);
+            if (identity?.identity_id) await restoreIdentityState(env, player.id, identity.identity_id);
+            logEvent("account_reset", { player_id: player.id, telegram_id: String(player.telegram_id), identity_id: identity?.identity_id || null });
+            return sendMenu(env, chatId, "🔄 اکانتت ری‌استارت شد!\\n\\nامتیازت از نو شروع شد، ولی سابقه پرونده‌ها و جریمه‌ها برای جلوگیری از تقلب حفظ شده.\\n\\nحالا بریم سراغ پرونده بعدی 😎🔥", "🔄");
+          }
+
+          async function deleteAccount'''
+          s, n = reset_re.subn(reset_new, s, count=1)
+          if n != 1: raise SystemExit('resetAccount patch failed')
+
+          delete_re = re.compile(r'async function deleteAccount\(env, chatId, player\) \{.*?\n\}\n\nasync function accountSettings', re.S)
+          delete_new = '''async function deleteAccount(env, chatId, player) {
+            const identity = await env.DB.prepare(`SELECT identity_id FROM players WHERE id=?`).bind(player.id).first();
+            await env.DB.batch([
+              env.DB.prepare("DELETE FROM player_progress WHERE player_id=?").bind(player.id),
+              env.DB.prepare("DELETE FROM case_rewards WHERE player_id=?").bind(player.id),
+              env.DB.prepare("DELETE FROM player_achievements WHERE player_id=?").bind(player.id),
+              env.DB.prepare("DELETE FROM player_inventory WHERE player_id=?").bind(player.id),
+              env.DB.prepare("DELETE FROM players WHERE id=?").bind(player.id)
+            ]);
+            logEvent("account_deleted", { player_id: player.id, telegram_id: String(player.telegram_id), identity_id: identity?.identity_id || null });
+            return sendMessage(env, chatId, "🗑️ حسابت پاک شد.\\n\\nسابقه بازی و ضدتقلبت برای جلوگیری از دور زدن سیستم محفوظ می‌مونه. هر وقت خواستی برگردی /start رو بزن. 👋", removeKeyboard(), 450, "🗑️");
+          }
+
+          async function accountSettings'''
+          s, n = delete_re.subn(delete_new, s, count=1)
+          if n != 1: raise SystemExit('deleteAccount patch failed')
+
+          old = 'const mistake = await recordCaseMistake(env, player.id, activeCase.id);\n        const warning = getMistakeWarning(mistake.wrongGuesses);'
+          new = 'const mistake = await recordCaseMistake(env, player.id, activeCase.id);\n        await syncIdentityCase(env, player.id, activeCase.id);\n        const warning = getMistakeWarning(mistake.wrongGuesses);'
+          s = s.replace(old, new, 1)
+
+          old = 'const awarded = await awardCaseScore(env, message.from.id, player.id, activeCase.id);'
+          new = '''const identity = await env.DB.prepare(`SELECT identity_id FROM players WHERE id=?`).bind(player.id).first();
+        const historical = identity?.identity_id ? await env.DB.prepare(`SELECT solved FROM identity_case_history WHERE identity_id=? AND case_id=?`).bind(identity.identity_id, activeCase.id).first() : null;
+        if (Number(historical?.solved || 0) === 1) return sendMenu(env, chatId, "✅ این پرونده قبلاً برای این هویت ثبت شده.\\n\\nحذف یا ری‌استارت حساب امتیاز دوباره نمی‌ده؛ بریم سراغ پرونده بعدی 😎", "🏆");
+        const awarded = await awardCaseScore(env, message.from.id, player.id, activeCase.id);'''
+          s = s.replace(old, new, 1)
+          s = s.replace('if (!awarded) return sendMenu(env, chatId, "✅ این پرونده قبلاً حل شده.\\n\\nبریم سراغ پرونده بعدی؟ 😎", "🏆");\n            const newlyUnlocked', 'if (!awarded) return sendMenu(env, chatId, "✅ این پرونده قبلاً حل شده.\\n\\nبریم سراغ پرونده بعدی؟ 😎", "🏆");\n        await syncIdentityCase(env, player.id, activeCase.id);\n            const newlyUnlocked', 1)
+
+          daily_re = re.compile(r'async function daily\(env, chatId, player\) \{.*?\n\}\n\nasync function showHelp', re.S)
+          daily_new = '''async function daily(env, chatId, player) {
+            const today = new Date().toISOString().slice(0, 10);
+            const identity = await env.DB.prepare(`SELECT identity_id FROM players WHERE id=?`).bind(player.id).first();
+            if (player.last_daily_claim === today) return sendMessage(env, chatId, "🎯 مأموریت امروز رو قبلاً گرفتی!\\n\\nفردا دوباره یه مأموریت تازه داریم 😎", MENU, 600, "🎯");
+            if (identity?.identity_id) {
+              const claimed = await env.DB.prepare(`SELECT id FROM identity_daily_claims WHERE identity_id=? AND mission_date=?`).bind(identity.identity_id, today).first();
+              if (claimed) return sendMessage(env, chatId, "🎯 جایزه امروز برای این هویت قبلاً دریافت شده!\\n\\nفردا دوباره یه مأموریت تازه داریم 😎", MENU, 600, "🎯");
+            }
+            const newScore = (player.score || 0) + 25;
+            const newStreak = (player.streak || 0) + 1;
+            const now = new Date().toISOString();
+            const statements = [env.DB.prepare("UPDATE players SET score=?, streak=?, last_daily_claim=?, updated_at=? WHERE id=?").bind(newScore, newStreak, today, now, player.id)];
+            if (identity?.identity_id) statements.push(env.DB.prepare(`INSERT OR IGNORE INTO identity_daily_claims (identity_id, mission_date, claimed_at) VALUES (?, ?, ?)`).bind(identity.identity_id, today, now));
+            await env.DB.batch(statements);
+            return sendMessage(env, chatId, `🎯 مأموریت امروز انجام شد!\\n\\n💰 +۲۵ امتیاز\\n🔥 استریک: ${newStreak} روز\\n\\nهمین‌جوری ادامه بده کارآگاه؛ فردا هم یه جایزه داریم 👀`, MENU, 800, "🎉");
+          }
+
+          async function showHelp'''
+          s, n = daily_re.subn(daily_new, s, count=1)
+          if n != 1: raise SystemExit('daily patch failed')
+
+          old = 'if (Number(result?.meta?.changes || 0) > 0) newlyUnlocked.push(id);'
+          new = '''if (Number(result?.meta?.changes || 0) > 0) {
+      newlyUnlocked.push(id);
+      const identity = await env.DB.prepare(`SELECT identity_id FROM players WHERE id=?`).bind(playerId).first();
+      if (identity?.identity_id) await env.DB.prepare(`INSERT OR IGNORE INTO identity_achievements (identity_id, achievement_id, unlocked_at) VALUES (?, ?, ?)`)
+        .bind(identity.identity_id, id, new Date().toISOString()).run();
+    }'''
+          s = s.replace(old, new, 1)
+
+          p.write_text(s, encoding='utf-8')
+          PY
+      - name: Validate
+        run: |
+          node --check src/index.js
+          npm test
+      - name: Commit fix
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/index.js
+          git diff --cached --quiet || git commit -m "fix: enforce permanent identity anti-cheat"
+          git push
